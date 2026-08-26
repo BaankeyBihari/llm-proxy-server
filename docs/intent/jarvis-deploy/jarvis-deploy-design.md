@@ -37,4 +37,4 @@ The startup script (pasted into Jarvis Labs' instance "Startup Script" field, so
 
 - `docs/high-level-design.md`
 - `docs/gemini/MasterGuide-LiteLLM-Stack.md` § 4 (Phase 2: Production on Jarvis Labs)
-- `docs/gemini/RisAnalysis.md` § 1 (Tailscale Ghost Node), § 2 (Docker Daemon Boot Race)
+- `docs/gemini/RiskAnalysis.md` § 1 (Tailscale Ghost Node), § 2 (Docker Daemon Boot Race)

@@ -74,6 +74,7 @@ A single engineer (or small personal team) running AI coding tools from their ow
 | AWS idle-shutdown detected via `docker logs --since 4h | grep -c "POST /"` | CloudWatch-based request metrics | No AWS-side metering cost or IAM surface; the check runs entirely on-host via cron. |
 | EC2 instance type whitelist enforced in the Lambda ignition function, not just documented | Trust the caller / no server-side check | AWS silently fails cross-architecture (`t3` ↔ `t4g`) resizes; validating server-side turns a silent failure into a clear 400. |
 | Test tooling: pytest as the sole runner, for both the Python Lambda and the shell boot/idle scripts (via subprocess + PATH-shimmed fake `docker`/`git`/`tailscale` binaries) | A second shell-specific framework (e.g. bats) for the scripts | One runner across the whole repo avoids a second test framework for a handful of shell scripts whose logic is thin orchestration; PATH-shimming is sufficient to assert call sequence without real infra. |
+| Dev tooling: mise pins the Python version (`.mise.toml`), uv manages dependencies (`pyproject.toml` + `uv.lock`) | pyenv + pip/venv, Poetry | mise+uv gives a single pinned, reproducible toolchain across contributors/CI without a second version manager; uv's lockfile makes dependency resolution deterministic. `python-preference = "only-system"` in `pyproject.toml` keeps uv from fetching its own interpreter and silently diverging from mise's pin. |
 
 ## Success Metrics
 
@@ -86,4 +87,4 @@ A single engineer (or small personal team) running AI coding tools from their ow
 ## References
 
 - `docs/gemini/MasterGuide-LiteLLM-Stack.md` — full stack spec, both deploy targets, Lambda ignition code.
-- `docs/gemini/RisAnalysis.md` — five identified failure modes and their mitigations; source of several tenets and decisions above.
+- `docs/gemini/RiskAnalysis.md` — five identified failure modes and their mitigations; source of several tenets and decisions above.
