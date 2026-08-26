@@ -1,0 +1,40 @@
+version: "3.8"
+
+services:
+  # @spec GATE-008, GATE-009
+  redis:
+    image: redis:7-alpine
+    container_name: litellm-redis
+    restart: always
+    # Save every 60s if >=1 key changed. Cap memory at 1.5GB with LRU eviction.
+    command: redis-server --save 60 1 --maxmemory 1536mb --maxmemory-policy allkeys-lru
+    volumes:
+      - ./redis-data:/data
+
+  headroom:
+    image: python:3.12-slim
+    container_name: headroom-proxy
+    restart: always
+    command: >
+      sh -c "pip install headroom-ai[proxy] && headroom proxy --host 0.0.0.0 --port 8787 --mode cache"
+    environment:
+      - HEADROOM_TELEMETRY=off
+      - HEADROOM_COMPRESS_USER_MESSAGES=1
+
+  # @spec GATE-010
+  litellm:
+    image: ghcr.io/berriai/litellm:main-v1.92.0
+    container_name: litellm-proxy
+    restart: always
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./config.yaml:/app/config.yaml
+    environment:
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+      - REDIS_HOST=redis
+    command: [ "--config", "/app/config.yaml", "--port", "4000" ]
+    depends_on:
+      - redis
+      - headroom

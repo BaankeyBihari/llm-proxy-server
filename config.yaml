@@ -1,0 +1,53 @@
+# @spec GATE-001, GATE-002, GATE-003, GATE-004, GATE-005, GATE-006, GATE-007
+model_list:
+  # 1. Smart Auto-Router (best overall model)
+  - model_name: smart-auto
+    litellm_params:
+      model: openrouter/openrouter/auto
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # 2. Lowest-cost auto-router
+  - model_name: cheapest-auto
+    litellm_params:
+      model: openrouter/openrouter/auto:floor
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # 3. High-speed auto-router
+  - model_name: fast-auto
+    litellm_params:
+      model: openrouter/openrouter/auto:nitro
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # 4. Resilient fallback chain (two entries, same model_name, in priority order)
+  - model_name: resilient-router
+    litellm_params:
+      model: openrouter/nousresearch/hermes-3-llama-3.1-405b
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: resilient-router
+    litellm_params:
+      model: openrouter/nvidia/llama-3.1-nemotron-70b-instruct
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # 5. Wildcard passthrough (any OpenRouter model)
+  - model_name: openrouter/*
+    litellm_params:
+      model: openrouter/*
+      api_key: os.environ/OPENROUTER_API_KEY
+
+guardrails:
+  - guardrail_name: headroom-compression
+    litellm_params:
+      guardrail: headroom
+      mode: pre_call
+      api_base: http://headroom:8787
+      default_on: true
+
+litellm_settings:
+  cache: true
+  cache_params:
+    type: redis
+    host: os.environ/REDIS_HOST
+    port: 6379
+    ttl: 604800 # 7-day TTL to survive the work week
+  forward_client_headers_to_llm_api: true
+  drop_params: true

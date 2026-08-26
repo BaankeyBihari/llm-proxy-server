@@ -1,0 +1,3 @@
+# @spec AWS-007
+# Install with: crontab scripts/aws-idle-check.cron
+0 * * * * /home/ubuntu/litellm-proxy/scripts/aws-idle-check.sh

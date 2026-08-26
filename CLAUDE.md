@@ -2,9 +2,25 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## LID
+- Mode: Full
+- Version: 1.3.0
+
 ## Repo state
 
-Docs-only. No `config.yaml`, `docker-compose.yml`, `.env.example`, or application code exist yet — only planning docs in `docs/gemini/`. There is nothing to build, lint, or test. Once the stack files land, this file needs a Commands section added.
+The gateway stack config, both deploy targets' scripts, and the ignition Lambda are implemented and tested (all 4 leaf LLDs at `docs/intent/`, specs marked `[x]`). Design intent lives in `docs/high-level-design.md` and `docs/intent/`; `docs/gemini/` is the original research this was built from.
+
+## Commands
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+.venv/bin/pytest              # full suite
+.venv/bin/pytest tests/test_gateway_config.py   # config.yaml / docker-compose.yml only
+.venv/bin/pytest tests/test_ignition_handler.py::test_rejects_size_outside_whitelist   # single test
+grep -rl '@spec GATE-007' .          # find everything tied to one spec ID
+```
+
+No separate lint/build step — `docker compose config` validates `docker-compose.yml` structurally if needed ad hoc.
 
 ## What this project is
 

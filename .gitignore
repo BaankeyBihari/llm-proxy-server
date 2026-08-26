@@ -1,2 +1,8 @@
 .claude
 .tokensave
+
+.venv/
+__pycache__/
+.pytest_cache/
+redis-data/
+.env
