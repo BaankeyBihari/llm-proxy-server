@@ -17,13 +17,12 @@ uv run pytest     # runs the test suite
 ## Running the stack
 
 ```bash
-cp .env.example .env   # then fill in OPENROUTER_API_KEY / LITELLM_MASTER_KEY
-docker compose up -d
-curl http://localhost:4000/v1/chat/completions \
-  -H "Authorization: Bearer sk-master-key-1234" \
-  -H "Content-Type: application/json" \
-  -d '{"model": "smart-auto", "messages": [{"role": "user", "content": "Ping."}]}'
+./scripts/local-launch.sh
 ```
+
+Copies `.env.example` → `.env` if missing, prompts per key to keep or replace it, then runs `docker compose up -d` and prints a ready-to-run `curl` example with your real `LITELLM_MASTER_KEY` already substituted in. Aborts instead of prompting if the stack's already running — run `./scripts/local-stop.sh` first if you want a `.env` edit to take effect.
+
+To stop: `./scripts/local-stop.sh` — brings the stack down gracefully, or warns (doesn't error) if it's already down.
 
 ## Deploying to Jarvis Labs
 
@@ -33,7 +32,7 @@ Jarvis Labs pods are paused (not terminated) between sessions, so the whole boot
 2. Open `scripts/jarvis-startup.sh` and, at the top, set real values for `TAILSCALE_AUTHKEY`, `GIT_REPO_URL`, and (if you don't want the defaults) `WORKSPACE` / `TAILSCALE_HOSTNAME` — either edit the `:-default` values directly or export them above the script body.
 3. Paste the resulting script into the pod's **Startup Script** field. It runs on every resume, not just first boot.
 4. First resume: it pins Tailscale's state under `$WORKSPACE/tailscale-state` (survives pause — this is what stops the pod from re-registering as a new node every time), clones the repo, waits for Docker, and writes a placeholder `.env`.
-5. SSH in once and replace the placeholder `.env` with real `OPENROUTER_API_KEY` / `LITELLM_MASTER_KEY` values, then `docker compose up -d --build` to pick them up.
+5. SSH in once. The stack is already running on placeholder secrets (step 4 started it) — `local-launch.sh` aborts rather than edit `.env` under a live container, so stop it first: `./scripts/local-stop.sh`, then `./scripts/local-launch.sh` to set the real `OPENROUTER_API_KEY` / `LITELLM_MASTER_KEY` values and bring it back up.
 6. From your laptop (Tailscale connected): `http://<TAILSCALE_HOSTNAME>:4000`.
 
 ## Deploying to AWS EC2
@@ -56,7 +55,7 @@ Generate a GitHub deploy key (`ssh-keygen`), add the public half to the repo, th
 **3. Configure secrets and scheduled jobs**
 ```bash
 cd /home/ubuntu/litellm-proxy
-cp .env.example .env   # fill in OPENROUTER_API_KEY / LITELLM_MASTER_KEY
+./scripts/local-launch.sh   # fill in OPENROUTER_API_KEY / LITELLM_MASTER_KEY
 crontab scripts/aws-idle-check.cron   # hourly idle check → poweroff after 4h silence
 crontab -l | { cat; echo "@reboot /home/ubuntu/litellm-proxy/scripts/aws-start-stack.sh"; } | crontab -
 ```
@@ -80,6 +79,7 @@ Allowed sizes: `t4g.small`, `t4g.medium`, `t3.small`, `t3.medium` — anything e
 | Path | What |
 |---|---|
 | `config.yaml`, `docker-compose.yml` | The gateway stack — LiteLLM, Headroom, Redis (deploy-target-agnostic) |
+| `scripts/local-launch.sh`, `local-stop.sh` | Interactive `.env` setup + launch, and graceful teardown, for local dev |
 | `scripts/jarvis-startup.sh` | Jarvis Labs pod boot sequence |
 | `scripts/aws-start-stack.sh`, `aws-idle-check.sh(+.cron)` | AWS EC2 boot sequence and idle auto-shutdown |
 | `ignition/handler.py` | AWS Lambda "ignition switch" that starts/resizes the EC2 host on demand |
