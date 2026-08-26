@@ -59,4 +59,4 @@ The `redis` service mounts `./redis-data:/data` and enables snapshotting via `--
 ## References
 
 - `docs/high-level-design.md`
-- `docs/gemini/MasterGuide-LiteLLM-Stack.md` § 2 (Core Configuration Files)
+- `docs/gemini/initial-survey.md` § 2 (Core Configuration Files)

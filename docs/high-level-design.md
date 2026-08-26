@@ -86,5 +86,4 @@ A single engineer (or small personal team) running AI coding tools from their ow
 
 ## References
 
-- `docs/gemini/MasterGuide-LiteLLM-Stack.md` — full stack spec, both deploy targets, Lambda ignition code.
-- `docs/gemini/RiskAnalysis.md` — five identified failure modes and their mitigations; source of several tenets and decisions above.
+- `docs/gemini/initial-survey.md` — full stack spec, both deploy targets, Lambda ignition code.

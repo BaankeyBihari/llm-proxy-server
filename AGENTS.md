@@ -31,7 +31,7 @@ No separate lint/build step — `docker compose config` validates `docker-compos
 
 A private LiteLLM gateway proxying to OpenRouter, with Headroom as a pre-call context-compression guardrail and Redis for persistent semantic caching. Two deployment targets are planned: Jarvis Labs (pause/resume GPU pods) and AWS EC2 (on-demand, auto-shutdown after 4h idle, Lambda-triggered start). Tailscale provides the only network path in — no public ports beyond the one Elastic IP on EC2, no SSL/domain setup.
 
-Full spec: `docs/gemini/MasterGuide-LiteLLM-Stack.md`. Known failure modes and their mitigations (Tailscale state wipe, Docker boot race, Redis cold start, expiring deploy creds, storage drift): `docs/gemini/RiskAnalysis.md`.
+Full spec: `docs/gemini/initial-survey.md`.
 
 ## Non-obvious architecture constraints
 

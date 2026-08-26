@@ -51,6 +51,5 @@ The 4-hour uptime floor and the 4-hour log-lookback window are the same value de
 ## References
 
 - `docs/high-level-design.md`
-- `docs/gemini/MasterGuide-LiteLLM-Stack.md` § 5 (Phase 3: Production on AWS EC2)
-- `docs/gemini/RiskAnalysis.md` § 2 (Docker Daemon Boot Race), § 5 (Storage Billing & Footprint Drift)
+- `docs/gemini/initial-survey.md` § 5 (Phase 3: Production on AWS EC2)
 - `docs/intent/aws-ignition/aws-ignition-design.md` — the Lambda that triggers this leaf's boot sequence and is constrained by this leaf's `t3`/`t4g` family lock

@@ -38,5 +38,5 @@ A valid request returns HTTP 200 with a body naming the outcome (resized-and-boo
 ## References
 
 - `docs/high-level-design.md`
-- `docs/gemini/MasterGuide-LiteLLM-Stack.md` § 6 (The Auto-Scaling "Ignition Switch")
+- `docs/gemini/initial-survey.md` § 6 (The Auto-Scaling "Ignition Switch")
 - `docs/intent/aws-deploy/aws-deploy-design.md` — the `t3`/`t4g` family lock this leaf's whitelist is derived from
