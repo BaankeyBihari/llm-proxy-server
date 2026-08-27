@@ -2,11 +2,11 @@
 
 ## Host Constraint
 
-The single-EIP / no-load-balancer / no-NAT-gateway constraint (see design doc) is AWS account/console configuration, not code this repo ships — it has no EARS spec here for the same reason as the Tailscale one-time setup below.
+The single-EIP / no-load-balancer / no-NAT-gateway constraint (see design doc) is codified in Terraform and specced under `aws-infra`, not here — this leaf's scripts consume the provisioned instance, they don't provision it.
 
 ## Boot Sequence
 
-Note: pinning Tailscale's `--statedir` to `/home/ubuntu/tailscale-state` is a one-time, manual host-provisioning step (run once over SSH when the instance is first created), not part of the recurring `start_stack.sh` — see design doc's Boot Sequence section. It has no EARS spec here because it is not code this repo ships or tests.
+Note: Tailscale authentication (with `--statedir` pinned to `/home/ubuntu/tailscale-state`) is not part of the recurring `start_stack.sh` — it runs once, automatically, from `aws-infra`'s Terraform `user_data` at first boot. It has its EARS spec there (`INFRA-015`), not here — this leaf's scripts consume an already-Tailscale-connected host, they don't establish that connection.
 
 - [x] **AWS-003**: The start script shall poll `docker info` in a loop until the Docker daemon is ready before starting containers.
 - [x] **AWS-004**: The start script shall run `git pull origin main` and bring up the Docker Compose stack on each invocation.

@@ -9,6 +9,8 @@ prefix: IGNITE
 
 The ignition switch is the on-demand trigger for `aws-deploy`'s stopped EC2 instance: an AWS Lambda function, exposed via a Function URL, that starts the instance and optionally resizes it first. Its whole job is turning an HTTP hit into a safe `ec2:StartInstances` (and optional `ec2:ModifyInstanceAttribute`) call — it owns no application logic beyond that and no state of its own.
 
+This leaf owns only that request-handling logic (`ignition/handler.py`). The Lambda's deployment mechanics — IAM role/policy, the function resource itself, the Function URL — are provisioned by `aws-infra`'s Terraform, which packages this leaf's `ignition/handler.py` unmodified.
+
 ## Request Handling
 
 The function reads `size` from the request's query string, defaulting to `t4g.small` when absent. The allowed set is a strict whitelist — `t4g.small`, `t4g.medium`, `t3.small`, `t3.medium` — validated **before** any AWS call. An invalid size returns HTTP 400 immediately; the function never attempts to start the instance with an unvalidated size.
@@ -40,3 +42,4 @@ A valid request returns HTTP 200 with a body naming the outcome (resized-and-boo
 - `docs/high-level-design.md`
 - `docs/gemini/initial-survey.md` § 6 (The Auto-Scaling "Ignition Switch")
 - `docs/intent/aws-deploy/aws-deploy-design.md` — the `t3`/`t4g` family lock this leaf's whitelist is derived from
+- `docs/intent/aws-infra/aws-infra-design.md` — provisions this leaf's IAM role, Lambda function, and Function URL, packaging `ignition/handler.py` unmodified

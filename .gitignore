@@ -6,3 +6,7 @@ __pycache__/
 .pytest_cache/
 redis-data/
 .env
+
+infra/.terraform/
+infra/terraform.tfstate*
+infra/lambda_ignition.zip

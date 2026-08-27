@@ -13,6 +13,8 @@ Unlike a Jarvis Labs pod (paused, storage billed continuously), an AWS EC2 targe
 
 AWS bills $0.005/hr per public IP. The instance gets **exactly one Elastic IP (EIP)** and nothing else — no load balancer, no NAT gateway, no secondary IP. An EIP stays associated with a *stopped* instance (unlike an auto-assigned public IP, which is released on stop), which is what makes the stop/start cycle preserve the Tailscale-reachable address without re-provisioning networking on every ignition. Instance family is fixed to `t3.*` (x86_64) or `t4g.*` (ARM64) — the two families cannot be crossed on the same EBS volume, which constrains what the ignition Lambda (`aws-ignition`) is allowed to resize into.
 
+This instance and its EIP are provisioned via Terraform — see `aws-infra`, which owns the `infra/main.tf` that codifies this constraint, not this leaf.
+
 ## Boot Sequence (`start_stack.sh`)
 
 Runs via `@reboot` cron (or an equivalent systemd unit) so it fires every time the ignition Lambda starts the instance:
@@ -22,7 +24,7 @@ Runs via `@reboot` cron (or an equivalent systemd unit) so it fires every time t
 3. `git pull origin main`.
 4. `docker compose up -d`.
 
-Tailscale itself is brought up separately at initial host setup (`tailscale up --hostname=cloud-litellm --statedir=/home/ubuntu/tailscale-state`) — its state directory is pinned under `/home/ubuntu/` for the same ghost-node reason as `jarvis-deploy`, though EC2's stop/start (rather than pause) means this matters less in practice than for Jarvis; it's pinned anyway for consistency and because `/home` persists across stop/start while ephemeral instance-store paths would not.
+Tailscale itself comes up automatically on first boot, via `aws-infra`'s Terraform `user_data` (`tailscale up --authkey=... --hostname=cloud-litellm --statedir=/home/ubuntu/tailscale-state`) — not a manual step here. Its state directory is pinned under `/home/ubuntu/` for the same ghost-node reason as `jarvis-deploy`, though EC2's stop/start (rather than pause) means this matters less in practice than for Jarvis; it's pinned anyway for consistency and because `/home` persists across stop/start while ephemeral instance-store paths would not.
 
 ## Idle Shutdown (`idle_check.sh`)
 
@@ -30,7 +32,7 @@ Tailscale itself is brought up separately at initial host setup (`tailscale up -
 2. Otherwise, count `POST /` lines in `docker logs --since 4h litellm-proxy`.
 3. If that count is zero, `sudo poweroff` — AWS surfaces this as the instance transitioning to `stopped`.
 
-The hourly cadence is shipped as a versioned crontab fragment (`scripts/aws-idle-check.cron`) rather than a hand-typed `crontab -e` line, so the schedule itself is reviewable and testable rather than trusted to have been typed correctly on the host. Installing it (`crontab scripts/aws-idle-check.cron`) is still a one-time manual step, same as the Tailscale setup below.
+The hourly cadence is shipped as a versioned crontab fragment (`scripts/aws-idle-check.cron`) rather than a hand-typed `crontab -e` line, so the schedule itself is reviewable and testable rather than trusted to have been typed correctly on the host. Installing it (`crontab scripts/aws-idle-check.cron`) is still a one-time manual step — done over SSM Session Manager along with the repo clone and secrets setup (see `aws-infra-design.md`'s Remote Access section), since Tailscale itself no longer needs a manual step.
 
 The 4-hour uptime floor and the 4-hour log-lookback window are the same value deliberately: once past the floor, "no requests in the last 4h" and "no requests since boot" converge, so the check never has to distinguish "just booted, no requests yet" from "genuinely idle."
 
@@ -53,3 +55,4 @@ The 4-hour uptime floor and the 4-hour log-lookback window are the same value de
 - `docs/high-level-design.md`
 - `docs/gemini/initial-survey.md` § 5 (Phase 3: Production on AWS EC2)
 - `docs/intent/aws-ignition/aws-ignition-design.md` — the Lambda that triggers this leaf's boot sequence and is constrained by this leaf's `t3`/`t4g` family lock
+- `docs/intent/aws-infra/aws-infra-design.md` — provisions the EC2 instance and EIP this leaf's scripts run on

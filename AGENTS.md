@@ -8,7 +8,7 @@ This file provides guidance to AI coding agents (Claude Code reads it via the `@
 
 ## Repo state
 
-The gateway stack config, both deploy targets' scripts, and the ignition Lambda are implemented and tested (all 4 leaf LLDs at `docs/intent/`, specs marked `[x]`). Design intent lives in `docs/high-level-design.md` and `docs/intent/`; `docs/gemini/` is the original research this was built from.
+The gateway stack config, both deploy targets' scripts, the ignition Lambda, and the AWS Terraform provisioning (`infra/main.tf`) are implemented and tested (all 5 leaf LLDs at `docs/intent/`, specs marked `[x]`). Design intent lives in `docs/high-level-design.md` and `docs/intent/`; `docs/gemini/` is the original research this was built from.
 
 ## Commands
 

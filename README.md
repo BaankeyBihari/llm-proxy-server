@@ -37,20 +37,21 @@ Jarvis Labs pods are paused (not terminated) between sessions, so the whole boot
 
 ## Deploying to AWS EC2
 
-Fully manual, SSH-driven setup — no CloudFormation/Terraform in this repo. See `docs/intent/aws-deploy/aws-deploy-design.md` and `docs/intent/aws-ignition/aws-ignition-design.md` for the rationale (single-EIP cost constraint, `t3`/`t4g` family lock).
+The EC2 instance, Elastic IP, IAM roles, and ignition Lambda are provisioned via Terraform (`infra/main.tf`) — no manual console click-through. See `docs/intent/aws-infra/aws-infra-design.md` for what it provisions and why, and `docs/intent/aws-deploy/aws-deploy-design.md` / `docs/intent/aws-ignition/aws-ignition-design.md` for the rationale behind the constraints it encodes (single-EIP cost constraint, `t3`/`t4g` family lock).
 
-**1. Launch the instance**
-- Ubuntu 24.04 LTS, either `t4g.*` (ARM64) or `t3.*` (x86_64) — pick one family, you can't cross it later. Start with `t4g.small`.
-- Allocate **exactly one Elastic IP** and associate it. No load balancer, NAT gateway, or secondary IP — that's a deliberate cost cap, not a gap.
-
-**2. One-time host setup (SSH in)**
+**1. Provision the infra**
 ```bash
-sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
-sudo apt update && sudo apt install docker.io docker-compose-v2
-curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up --hostname=cloud-litellm --statedir=/home/ubuntu/tailscale-state
+cd infra
+terraform init
+terraform apply   # prompts for tailscale_auth_key (a reusable key from the Tailscale Admin Panel); prints ec2_public_ip and ignition_switch_url
 ```
-Generate a GitHub deploy key (`ssh-keygen`), add the public half to the repo, then clone to `/home/ubuntu/litellm-proxy`.
+The instance connects to Tailscale automatically on first boot — no manual `tailscale up` needed. To tear everything down (back to $0.00): `terraform destroy`. If local Terraform state is lost, `cloud-nuke` is a documented fallback — see `docs/gemini/terraform-and-nuke-guide.md`.
+
+**2. One-time host setup (Session Manager, not SSH — the security group has no ingress rules)**
+```bash
+aws ssm start-session --target <instance-id>
+```
+Generate a GitHub deploy key (`ssh-keygen`), add the public half to the repo, then clone to `/home/ubuntu/litellm-proxy`. (Docker, Tailscale, and the SSM agent itself are already installed and configured by Terraform's `user_data`.)
 
 **3. Configure secrets and scheduled jobs**
 ```bash
@@ -61,13 +62,7 @@ crontab -l | { cat; echo "@reboot /home/ubuntu/litellm-proxy/scripts/aws-start-s
 ```
 The `@reboot` line is what runs `scripts/aws-start-stack.sh` (docker-wait, `git pull`, `docker compose up -d`) every time the ignition Lambda starts the instance.
 
-**4. Deploy the ignition Lambda**
-- Create a Python 3.12 Lambda from `ignition/handler.py`.
-- IAM role: `ec2:StartInstances`, `ec2:ModifyInstanceAttribute` on the instance.
-- Environment variables: `INSTANCE_ID` (required), `AWS_REGION` (defaults to `us-east-1` if unset).
-- Enable a **Function URL**.
-
-**5. Use it**
+**4. Use it**
 ```bash
 curl "https://<lambda-function-url>/"                    # boot at current/default size
 curl "https://<lambda-function-url>/?size=t4g.medium"     # resize then boot
@@ -83,6 +78,7 @@ Allowed sizes: `t4g.small`, `t4g.medium`, `t3.small`, `t3.medium` — anything e
 | `scripts/jarvis-startup.sh` | Jarvis Labs pod boot sequence |
 | `scripts/aws-start-stack.sh`, `aws-idle-check.sh(+.cron)` | AWS EC2 boot sequence and idle auto-shutdown |
 | `ignition/handler.py` | AWS Lambda "ignition switch" that starts/resizes the EC2 host on demand |
+| `infra/main.tf` | Terraform: provisions the EC2 instance, EIP, IAM roles, and ignition Lambda |
 | `docs/high-level-design.md`, `docs/intent/` | Design intent (HLD, per-component LLDs, EARS specs) |
 | `docs/gemini/` | Original research this project was built from |
 

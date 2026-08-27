@@ -1,0 +1,86 @@
+---
+parent: high-level-design
+prefix: INFRA
+---
+
+# AWS Infra
+
+## Context and Design Philosophy
+
+This leaf owns the Terraform config (`infra/main.tf`) that provisions the physical AWS resources the other AWS-side leaves run on: the EC2 instance and Elastic IP `aws-deploy`'s boot/idle scripts run on, and the IAM role, Lambda function, and Function URL that expose `aws-ignition`'s request-handling logic. It owns **provisioning and teardown only** — it does not own boot-script behavior (`aws-deploy`) or request-handling logic (`aws-ignition`); it packages `ignition/handler.py` unmodified as the Lambda's deployed source.
+
+Terraform replaces the manual console click-through implied by `docs/gemini/initial-survey.md`'s original setup steps. `terraform destroy` is the primary teardown path back to $0.00; `cloud-nuke` is a documented fallback for when local Terraform state is lost, not code this repo ships or tests.
+
+## File Layout
+
+A single `infra/main.tf`, matching the source guide's one-file approach. `infra/terraform.tfstate*`, `infra/.terraform/`, and the generated `infra/lambda_ignition.zip` are gitignored — state and build artifacts are local, not checked in.
+
+## EC2 + Networking
+
+- `data "aws_ami"` looks up the latest Ubuntu 24.04 ARM64 AMI at apply time rather than hand-pinning an AMI ID that would rot.
+- `aws_instance`, type `t4g.small` (the default family/size from `aws-deploy`'s Host-Level Constraint), 20GB gp3 root volume.
+- `lifecycle { ignore_changes = [instance_type] }` — the ignition Lambda (`aws-ignition`) resizes the instance at runtime via `modify_instance_attribute`; without this, the next `terraform apply` would silently revert that resize back to the config's default.
+- Security group: zero ingress rules, allow-all egress. Matches the HLD's "Tailscale is the sole trust boundary" tenet — no inbound path exists at the AWS network layer at all.
+- `user_data` does one-time OS bootstrap: swap file, Docker, Tailscale install *and* authentication. `metadata_options { http_tokens = "required" }` forces IMDSv2 — needed because `user_data` now carries a secret (below), and IMDSv2 closes the plain-unauthenticated-GET path to reading it off the instance metadata service.
+- Installing the idle-check crontab remains a manual one-time step, same as documented in `aws-deploy-design.md` — Terraform does not automate it.
+
+## Tailscale Authentication
+
+`tailscale up --authkey=var.tailscale_auth_key --statedir=/home/ubuntu/tailscale-state --hostname=cloud-litellm` runs unattended in `user_data`, using a reusable pre-auth key from the Tailscale Admin Panel supplied as a `sensitive` Terraform variable at `apply` time. `--statedir` is pinned to the persistent EBS root volume for the same reason `aws-deploy-design.md` already gives (consistency with the Jarvis Labs target, even though EC2 stop/start doesn't strictly require it).
+
+This removes what was previously the AWS target's one remaining manual step (`tailscale up` over SSH/console). One manual step still remains: cloning the repo and setting `OPENROUTER_API_KEY`/`LITELLM_MASTER_KEY` via `./scripts/local-launch.sh`.
+
+## Remote Access Without Open Ports
+
+The security group above has **zero ingress rules**, including port 22, so the remaining manual step (git clone + secrets) can't go over SSH. The instance carries an IAM instance profile granting `AmazonSSMManagedInstanceCore`, and `user_data` enables the SSM agent, so that step goes over **AWS Systems Manager Session Manager** (outbound-initiated, no inbound port needed) instead. This keeps the "zero ingress, Tailscale is the only path in" tenet intact while still making the host reachable for that one step.
+
+## Elastic IP
+
+`aws_eip` attached to the instance — the single EIP `aws-deploy` requires, no load balancer, no NAT gateway.
+
+## Lambda Packaging
+
+`data "archive_file"` zips the repository's own `ignition/handler.py` (the tested source — see `aws-ignition-specs.md`), not an inline copy of the Python. Deploying the same file the test suite covers means there is exactly one copy of the request-handling logic, never a drifted duplicate baked into HCL.
+
+## IAM
+
+An execution role assumable only by `lambda.amazonaws.com`, with an inline policy granting exactly `ec2:StartInstances` and `ec2:ModifyInstanceAttribute`, scoped to the single provisioned instance's ARN — never `"*"`.
+
+## Function URL
+
+`authorization_type = "NONE"`. The ignition switch's entire purpose is to be reachable while the host is stopped and no Tailscale path exists yet — an `AWS_IAM`-authenticated URL would require distributing AWS credentials to whatever's waking the host, defeating the "hit a URL to boot it" model. The least-privilege IAM role above (single instance, two actions) is the actual safety boundary, not endpoint auth.
+
+## Region and the Lambda's `AWS_REGION`
+
+`var.aws_region` (default `us-east-1`) configures the `provider "aws"` block only. It is **not** passed into the Lambda's `environment.variables` — `AWS_REGION` is an AWS-reserved Lambda environment key; setting it explicitly fails deployment. `ignition/handler.py` already reads `os.environ.get("AWS_REGION", "us-east-1")`, which Lambda's runtime populates automatically.
+
+## Outputs
+
+EC2 public IP (from the EIP) and the ignition switch's Function URL, printed after `terraform apply`.
+
+## Decisions & Alternatives
+
+| Decision | Chosen | Alternatives Considered | Rationale |
+|---|---|---|---|
+| Where Terraform config lives | `infra/main.tf`, in-repo, version-controlled | A standalone folder outside the repo (the source guide's suggestion) | This repo already tracks all its deploy tooling (`scripts/`, `ignition/`) in git; a config that provisions the same infra those pieces run on belongs alongside them, not in an untracked folder. |
+| Lambda deployment source | `archive_file` packaging the existing `ignition/handler.py` | Inline Python string embedded in the HCL (the source guide's approach) | The guide's inline copy is also a functional regression — it only allows `small`/`medium`, not the full `t3`/`t4g` whitelist `IGNITE-001` already implements and tests cover. Packaging the real file guarantees the deployed Lambda matches what `tests/test_ignition_handler.py` verifies. |
+| `AWS_REGION` handling | Rely on Lambda's own reserved env var, already read by `ignition/handler.py` | Interpolate a Terraform variable into the Lambda's inline Python (the source guide's `${var.aws_region_placeholder}`) | That variable is never declared anywhere in the guide's own file — it would fail `terraform plan` as-is. `AWS_REGION` is Lambda-reserved and auto-populated; no plumbing is needed. |
+| Function URL auth | `NONE` | `AWS_IAM` | The switch must be callable with no prior network path to the host (that's its job). IAM auth would require distributing AWS credentials to the caller; the scoped IAM role on the Lambda's execution role is the actual safety boundary instead. |
+| AMI selection | `data "aws_ami"` lookup, most-recent Ubuntu 24.04 ARM64 | Hand-pinned AMI ID | Avoids a stale/deprecated AMI ID rotting in checked-in config. |
+| Terraform correctness testing | Scoped regex/substring assertions directly against `main.tf`'s text | `python-hcl2` parsing into a dict (as `test_gateway_config.py` does for YAML); shelling out to `terraform validate` | Tried `python-hcl2` first — it leaves quoted resource labels un-stripped in its output keys (version-dependent) and represents `jsonencode(...)` policy bodies as opaque `${...}` expression strings, so the IAM policy assertions that matter most (INFRA-009, INFRA-010) would need string matching anyway. With exactly one resource of each type in a single-file config, whole-file scoped regex is simpler and dependency-free; `terraform validate` needs the CLI installed/pinned and a provider plugin fetch just to check syntax. |
+| Remote access for the remaining manual step (git clone + secrets) | IAM instance profile (`AmazonSSMManagedInstanceCore`) + SSM agent enabled in `user_data`; access via Session Manager | Open port 22 in the security group for SSH | The security group has zero ingress rules by design (Tailscale is the sole trust boundary); Session Manager is outbound-initiated and needs no inbound port, so the remaining manual step doesn't require punching a hole in the "no public ports" tenet. |
+| Tailscale authentication | Automated: reusable authkey passed as a `sensitive` Terraform variable, baked into `user_data`, run unattended at first boot | Manual `tailscale up` over Session Manager (this leaf's previous approach) | Removes the last manual step standing between `terraform apply` and a Tailscale-reachable host. Trade-off: the authkey ends up in cleartext in local `terraform.tfstate` and in the instance's `user_data` attribute (readable by any principal in this AWS account with `ec2:DescribeInstanceAttribute`) — accepted given the single-operator target user and the local-state model this project already uses for `.env` secrets; `metadata_options.http_tokens = "required"` closes the unauthenticated-IMDS read path as a mitigation. |
+
+## Open Questions & Future Decisions
+
+### Deferred
+
+1. `cloud-nuke` is documented only (see `docs/gemini/terraform-and-nuke-guide.md`), as a fallback for lost local state — not automated or tested, since it's an external tool invocation rather than code this repo authors.
+2. Remote Terraform state (e.g. an S3 backend) is out of scope — the target user is a single engineer on a single machine; local, gitignored `terraform.tfstate` is sufficient at this scale.
+
+## References
+
+- `docs/high-level-design.md`
+- `docs/gemini/terraform-and-nuke-guide.md`
+- `docs/intent/aws-deploy/aws-deploy-design.md` — the EC2/EIP/instance-type constraints this leaf's Terraform resources implement
+- `docs/intent/aws-ignition/aws-ignition-design.md` — the Lambda whose deployment (not request-handling logic) this leaf owns; packages `ignition/handler.py` unmodified
