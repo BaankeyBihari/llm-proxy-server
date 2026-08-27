@@ -156,3 +156,32 @@ def test_function_url_is_unauthenticated(tf_text):
 def test_outputs_ip_and_function_url(tf_text):
     assert re.search(r'output\s+"\w+"\s*\{[^}]*aws_eip\.\w+\.public_ip', tf_text, re.S)
     assert re.search(r'output\s+"\w+"\s*\{[^}]*function_url', tf_text, re.S)
+
+
+# @spec INFRA-018
+def test_secrets_mode_defaults_to_bitwarden_and_rejects_other_values(tf_text):
+    var_block = _block(tf_text, re.compile(r'variable\s+"secrets_mode"\s*\{'))
+    assert re.search(r'default\s*=\s*"bitwarden"', var_block)
+    validation = _block(var_block, re.compile(r"validation\s*\{"))
+    assert re.search(r'contains\(\["bitwarden",\s*"env_file"\],\s*var\.secrets_mode\)', validation)
+
+
+# @spec INFRA-019
+def test_bws_access_token_is_sensitive_with_empty_default(tf_text):
+    var_block = _block(tf_text, re.compile(r'variable\s+"bws_access_token"\s*\{'))
+    assert re.search(r"sensitive\s*=\s*true", var_block)
+    assert re.search(r'default\s*=\s*""', var_block)
+
+
+# @spec INFRA-020
+def test_user_data_fetches_secrets_via_bitwarden_when_secrets_mode_is_bitwarden(tf_text):
+    block = _instance_block(tf_text)
+    assert re.search(r'if \[ "\$\{var\.secrets_mode\}" = "bitwarden" \]', block)
+    assert "bws secret list --output env" in block
+    assert re.search(r'BWS_ACCESS_TOKEN="\$\{var\.bws_access_token\}"', block)
+
+
+# @spec INFRA-021
+def test_bitwarden_secrets_write_to_fixed_host_path_not_repo(tf_text):
+    block = _instance_block(tf_text)
+    assert "/home/ubuntu/.env" in block

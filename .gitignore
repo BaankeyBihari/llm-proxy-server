@@ -10,3 +10,4 @@ redis-data/
 infra/.terraform/
 infra/terraform.tfstate*
 infra/lambda_ignition.zip
+infra/terraform.tfvars

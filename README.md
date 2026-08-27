@@ -41,11 +41,11 @@ The EC2 instance, Elastic IP, IAM roles, and ignition Lambda are provisioned via
 
 **1. Provision the infra**
 ```bash
-cd infra
-terraform init
-terraform apply   # prompts for tailscale_auth_key (a reusable key from the Tailscale Admin Panel); prints ec2_public_ip and ignition_switch_url
+./scripts/aws-launch.sh
 ```
-The instance connects to Tailscale automatically on first boot — no manual `tailscale up` needed. To tear everything down (back to $0.00): `terraform destroy`. If local Terraform state is lost, `cloud-nuke` is a documented fallback — see `docs/gemini/terraform-and-nuke-guide.md`.
+Copies `infra/terraform.tfvars.example` → `infra/terraform.tfvars` if missing, prompts per key to keep or replace it (same UX as `local-launch.sh`), then runs `terraform init`/`terraform apply` — prints `ec2_public_ip` and `ignition_switch_url`. Prompted keys: `tailscale_auth_key` (a reusable key from the Tailscale Admin Panel), `secrets_mode` (`bitwarden` default, or `env_file` — see below), and `bws_access_token` (Bitwarden Secrets Manager machine token, required in `bitwarden` mode — see `docs/gemini/bitwarden.md`). The instance connects to Tailscale automatically on first boot — no manual `tailscale up` needed.
+
+To tear everything down (back to $0.00): `./scripts/aws-destroy.sh`. Both scripts keep Terraform's own plan-then-confirm prompt (no `-auto-approve`). If local Terraform state is lost, `cloud-nuke` is a documented fallback — see `docs/gemini/terraform-and-nuke-guide.md`.
 
 **2. One-time host setup (Session Manager, not SSH — the security group has no ingress rules)**
 ```bash
@@ -56,7 +56,11 @@ Generate a GitHub deploy key (`ssh-keygen`), add the public half to the repo, th
 **3. Configure secrets and scheduled jobs**
 ```bash
 cd /home/ubuntu/litellm-proxy
-./scripts/local-launch.sh   # fill in OPENROUTER_API_KEY / LITELLM_MASTER_KEY
+```
+- `secrets_mode = "bitwarden"` (default): `user_data` already fetched `OPENROUTER_API_KEY`/`LITELLM_MASTER_KEY` to `/home/ubuntu/.env` — just `cp ~/.env .env`.
+- `secrets_mode = "env_file"`: run `./scripts/local-launch.sh` to fill in `OPENROUTER_API_KEY` / `LITELLM_MASTER_KEY` instead.
+
+```bash
 crontab scripts/aws-idle-check.cron   # hourly idle check → poweroff after 4h silence
 crontab -l | { cat; echo "@reboot /home/ubuntu/litellm-proxy/scripts/aws-start-stack.sh"; } | crontab -
 ```
@@ -79,6 +83,7 @@ Allowed sizes: `t4g.small`, `t4g.medium`, `t3.small`, `t3.medium` — anything e
 | `scripts/aws-start-stack.sh`, `aws-idle-check.sh(+.cron)` | AWS EC2 boot sequence and idle auto-shutdown |
 | `ignition/handler.py` | AWS Lambda "ignition switch" that starts/resizes the EC2 host on demand |
 | `infra/main.tf` | Terraform: provisions the EC2 instance, EIP, IAM roles, and ignition Lambda |
+| `scripts/aws-launch.sh`, `aws-destroy.sh` | Interactive `terraform.tfvars` setup + `terraform apply`, and `terraform destroy` |
 | `docs/high-level-design.md`, `docs/intent/` | Design intent (HLD, per-component LLDs, EARS specs) |
 | `docs/gemini/` | Original research this project was built from |
 

@@ -28,7 +28,26 @@ A single `infra/main.tf`, matching the source guide's one-file approach. `infra/
 
 `tailscale up --authkey=var.tailscale_auth_key --statedir=/home/ubuntu/tailscale-state --hostname=cloud-litellm` runs unattended in `user_data`, using a reusable pre-auth key from the Tailscale Admin Panel supplied as a `sensitive` Terraform variable at `apply` time. `--statedir` is pinned to the persistent EBS root volume for the same reason `aws-deploy-design.md` already gives (consistency with the Jarvis Labs target, even though EC2 stop/start doesn't strictly require it).
 
-This removes what was previously the AWS target's one remaining manual step (`tailscale up` over SSH/console). One manual step still remains: cloning the repo and setting `OPENROUTER_API_KEY`/`LITELLM_MASTER_KEY` via `./scripts/local-launch.sh`.
+This removes what was previously the AWS target's one remaining manual step (`tailscale up` over SSH/console). Cloning the repo remains a manual, one-time step (see Remote Access below); what happens to `OPENROUTER_API_KEY`/`LITELLM_MASTER_KEY` after that depends on `secrets_mode`, below.
+
+## Secrets (`secrets_mode`)
+
+A `secrets_mode` variable (`"bitwarden"` default, or `"env_file"`) picks how the host gets `OPENROUTER_API_KEY`/`LITELLM_MASTER_KEY`. See `docs/gemini/bitwarden.md` for the Bitwarden Secrets Manager setup this assumes.
+
+- **`bitwarden`**: `user_data` installs the ARM64 `bws` CLI and runs `bws secret list --output env`, authenticated with the `bws_access_token` variable (`sensitive`, empty default), writing the result to `/home/ubuntu/.env`. This runs at first boot, before the repo is cloned — writing to a fixed host path rather than into the (not-yet-cloned) repo directory sidesteps that ordering entirely. The one remaining manual step (repo clone, below) picks the file up with `cp ~/.env ~/litellm-proxy/.env` instead of running `./scripts/local-launch.sh`.
+- **`env_file`**: `user_data` does nothing extra. The operator runs `./scripts/local-launch.sh` over the same Session Manager session used for the repo clone, exactly as before this variable existed.
+
+`scripts/aws-launch.sh` (see below) is what actually sets `secrets_mode` and `bws_access_token` at `apply` time — an operator doesn't hand-edit `main.tf` or type `-var` flags per run.
+
+## Local Terraform Wrapper Scripts
+
+`scripts/aws-launch.sh` and `scripts/aws-destroy.sh` run on the operator's laptop, not the EC2 host — they wrap `terraform apply`/`terraform destroy` the way `local-launch.sh` wraps `docker compose up`.
+
+`aws-launch.sh` reuses `local-launch.sh`'s per-key keep-or-replace prompt loop (see `local-launch-design.md`), pointed at `infra/terraform.tfvars` (gitignored, seeded from a checked-in `infra/terraform.tfvars.example`) instead of `.env`, for `tailscale_auth_key`, `secrets_mode`, and `bws_access_token`. It parses/writes Terraform's `key = "value"` syntax rather than `.env`'s `KEY=value`, since a `.tfvars` file has to stay valid HCL — the keep-or-replace UX and per-key prompt are otherwise identical. It then runs `terraform -chdir=infra init` and `terraform -chdir=infra apply -var-file=terraform.tfvars`.
+
+`aws-destroy.sh` runs `terraform -chdir=infra destroy -var-file=terraform.tfvars` against the same file, erroring clearly if it doesn't exist yet.
+
+Neither script passes `-auto-approve` — Terraform's own plan-then-confirm prompt stays in the loop for both. This is a deliberate deviation from `docs/gemini/terraform-and-nuke-guide.md`'s wrapper scripts, which auto-approve both `apply` and `destroy`.
 
 ## Remote Access Without Open Ports
 
@@ -70,6 +89,10 @@ EC2 public IP (from the EIP) and the ignition switch's Function URL, printed aft
 | Terraform correctness testing | Scoped regex/substring assertions directly against `main.tf`'s text | `python-hcl2` parsing into a dict (as `test_gateway_config.py` does for YAML); shelling out to `terraform validate` | Tried `python-hcl2` first — it leaves quoted resource labels un-stripped in its output keys (version-dependent) and represents `jsonencode(...)` policy bodies as opaque `${...}` expression strings, so the IAM policy assertions that matter most (INFRA-009, INFRA-010) would need string matching anyway. With exactly one resource of each type in a single-file config, whole-file scoped regex is simpler and dependency-free; `terraform validate` needs the CLI installed/pinned and a provider plugin fetch just to check syntax. |
 | Remote access for the remaining manual step (git clone + secrets) | IAM instance profile (`AmazonSSMManagedInstanceCore`) + SSM agent enabled in `user_data`; access via Session Manager | Open port 22 in the security group for SSH | The security group has zero ingress rules by design (Tailscale is the sole trust boundary); Session Manager is outbound-initiated and needs no inbound port, so the remaining manual step doesn't require punching a hole in the "no public ports" tenet. |
 | Tailscale authentication | Automated: reusable authkey passed as a `sensitive` Terraform variable, baked into `user_data`, run unattended at first boot | Manual `tailscale up` over Session Manager (this leaf's previous approach) | Removes the last manual step standing between `terraform apply` and a Tailscale-reachable host. Trade-off: the authkey ends up in cleartext in local `terraform.tfstate` and in the instance's `user_data` attribute (readable by any principal in this AWS account with `ec2:DescribeInstanceAttribute`) — accepted given the single-operator target user and the local-state model this project already uses for `.env` secrets; `metadata_options.http_tokens = "required"` closes the unauthenticated-IMDS read path as a mitigation. |
+| Where the Bitwarden-fetched `.env` lands | `/home/ubuntu/.env`, a fixed host path, copied into the repo manually as part of the (already-manual) clone step | Have `user_data` also clone the repo, so `.env` could be written straight into it | Automating the clone was out of scope for this change — it stays a manual Session Manager step, same as before `secrets_mode` existed. Writing to a fixed host path avoids that step ordering mattering at all. |
+| `secrets_mode` variable validation | `validation` block restricting the variable to `["bitwarden", "env_file"]` | Leave it a free-form string, fail only inside `user_data`'s bash `if` at boot time | A typo'd value should fail fast at `terraform plan`/`apply`, not silently skip both branches on a running instance discovered later. |
+| `aws-launch.sh` / `aws-destroy.sh` approval flag | No `-auto-approve` on either; Terraform's own plan-then-confirm stays | `-auto-approve` on both, matching `docs/gemini/terraform-and-nuke-guide.md`'s wrapper scripts | `destroy` is irreversible (EBS volume, EIP release); `apply` is reversible but still costs money per run. Keeping Terraform's native confirmation on both matches this repo's existing pattern of guarding rather than blindly auto-approving (`local-launch.sh`'s running-container guard, `local-stop.sh`'s graceful-only stop). |
+| Reusing `local-launch.sh`'s prompt loop for Terraform variables | A near-identical loop in `aws-launch.sh`, adapted for `.tfvars`' `key = "value"` syntax instead of `.env`'s `KEY=value` | Extract a shared shell function/library both scripts source | Two ~15-line loops differing only in line syntax don't justify a shared library in a project with no other shell tooling infrastructure; each script stays copy-pasteable and readable standalone. |
 
 ## Open Questions & Future Decisions
 
@@ -77,10 +100,13 @@ EC2 public IP (from the EIP) and the ignition switch's Function URL, printed aft
 
 1. `cloud-nuke` is documented only (see `docs/gemini/terraform-and-nuke-guide.md`), as a fallback for lost local state — not automated or tested, since it's an external tool invocation rather than code this repo authors.
 2. Remote Terraform state (e.g. an S3 backend) is out of scope — the target user is a single engineer on a single machine; local, gitignored `terraform.tfstate` is sufficient at this scale.
+3. Automating the repo clone itself (so `bitwarden` mode could be fully zero-touch, matching `docs/gemini/terraform-and-nuke-guide.md`'s auto-clone `user_data`) is left open — it would also need the crontab/`@reboot` install (`aws-deploy-design.md`'s own deferred item) automated to actually reach zero-touch, and both are out of scope for this change.
 
 ## References
 
 - `docs/high-level-design.md`
 - `docs/gemini/terraform-and-nuke-guide.md`
+- `docs/gemini/bitwarden.md` — Bitwarden Secrets Manager setup `secrets_mode = "bitwarden"` assumes
+- `docs/intent/local-launch/local-launch-design.md` — the per-key prompt/persist UX `aws-launch.sh` adapts for `.tfvars`
 - `docs/intent/aws-deploy/aws-deploy-design.md` — the EC2/EIP/instance-type constraints this leaf's Terraform resources implement
 - `docs/intent/aws-ignition/aws-ignition-design.md` — the Lambda whose deployment (not request-handling logic) this leaf owns; packages `ignition/handler.py` unmodified

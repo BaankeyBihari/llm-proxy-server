@@ -1,0 +1,3 @@
+tailscale_auth_key = "tskey-auth-REPLACE_ME"
+secrets_mode = "bitwarden"
+bws_access_token = ""
