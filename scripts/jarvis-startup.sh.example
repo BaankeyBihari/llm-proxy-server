@@ -1,6 +1,9 @@
 #!/bin/bash
-# Jarvis Labs pod startup script — pasted into the pod's "Startup Script"
-# field, so it runs on every resume, not just first boot.
+# Jarvis Labs pod startup script — TEMPLATE. Checked in with placeholder
+# defaults for TAILSCALE_AUTHKEY/GIT_REPO_URL; run `./scripts/launch.sh
+# --env=jarvis` to render this into a real, gitignored `jarvis-startup.sh`
+# with those two substituted, then paste ITS contents into the pod's
+# "Startup Script" field. Runs on every resume, not just first boot.
 # @spec JARVIS-001, JARVIS-002, JARVIS-003, JARVIS-004, JARVIS-005
 set -euo pipefail
 

@@ -52,7 +52,7 @@ Editing a secret here only changes what's stored in the Bitwarden project; this 
 
 ## Local Terraform Wrapper Scripts
 
-`scripts/launch.sh --env=aws` and `scripts/aws-destroy.sh` run on the operator's laptop, not the EC2 host — they wrap `terraform apply`/`terraform destroy` the way `launch.sh --env=local` wraps `docker compose up`. `launch.sh` is a single entrypoint shared with the `local-launch` leaf, dispatched by `--env`; this leaf owns the `--env=aws` path — see `local-launch-design.md` for the local path and `high-level-design.md`'s decision table for why the two share one script.
+`scripts/launch.sh --env=aws` and `scripts/aws-destroy.sh` run on the operator's laptop, not the EC2 host — they wrap `terraform apply`/`terraform destroy` the way `launch.sh --env=local` wraps `docker compose up`. `launch.sh` is a single entrypoint shared across three leaves (`local-launch`, `aws-infra`, `jarvis-deploy`), dispatched by `--env`; this leaf owns the `--env=aws` path — see `local-launch-design.md` and `jarvis-deploy-design.md` for the other paths, and `high-level-design.md`'s decision table for why they share one script.
 
 The `--env=aws` path uses `project-config`'s shared prompt loop (`scripts/lib/project-toml.sh`), pointed at `project.toml`'s `[secrets].tailscale_auth_key` instead of its own copy of the loop against `infra/terraform.tfvars` — see `project-config-design.md` for why the two paths share one implementation instead of two. It then calls `scripts/render_config.py` to produce `infra/generated.auto.tfvars.json`, and runs `terraform -chdir=infra init` and `terraform -chdir=infra apply` — no `-var-file` flag; Terraform auto-loads `*.auto.tfvars.json` natively.
 

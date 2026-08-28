@@ -1,4 +1,7 @@
-"""Behavioral tests for scripts/jarvis-startup.sh via PATH-shimmed fakes.
+"""Behavioral tests for scripts/jarvis-startup.sh.example (the template —
+its boot logic is identical to the rendered scripts/jarvis-startup.sh, only
+TAILSCALE_AUTHKEY/GIT_REPO_URL differ, neither of which these tests touch)
+via PATH-shimmed fakes.
 
 The script is parameterized via env vars (WORKSPACE, TAILSCALE_STATEDIR,
 BOOT_SLEEP_SECS, DOCKER_POLL_INTERVAL_SECS) precisely so it's testable this
@@ -10,7 +13,7 @@ import subprocess
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SCRIPT = REPO_ROOT / "scripts" / "jarvis-startup.sh"
+SCRIPT = REPO_ROOT / "scripts" / "jarvis-startup.sh.example"
 
 
 def _run(tmp_path, fake_bin, workspace, env_overrides=None):

@@ -43,8 +43,8 @@ Returns a `sk-...` key scoped to that budget — hand it to a device/tool instea
 Jarvis Labs pods are paused (not terminated) between sessions, so the whole boot sequence lives in one script pasted into the pod's dashboard — see `docs/intent/jarvis-deploy/jarvis-deploy-design.md`.
 
 1. Provision a pod with a persistent `/home` volume.
-2. Open `scripts/jarvis-startup.sh` and, at the top, set real values for `TAILSCALE_AUTHKEY`, `GIT_REPO_URL`, and (if you don't want the defaults) `WORKSPACE` / `TAILSCALE_HOSTNAME` — either edit the `:-default` values directly or export them above the script body.
-3. Paste the resulting script into the pod's **Startup Script** field. It runs on every resume, not just first boot.
+2. `./scripts/launch.sh --env=jarvis` — prompts for `tailscale_auth_key` (a reusable key from the Tailscale Admin Panel → Settings → Keys; see step 0 of the AWS section below for how to generate one, same key works for both targets), derives `GIT_REPO_URL` from your local checkout's own git remote, and renders `scripts/jarvis-startup.sh` (gitignored — never committed) from its `scripts/jarvis-startup.sh.example` template. Want `WORKSPACE`/`TAILSCALE_HOSTNAME` different from their defaults? Edit the rendered file's `:-default` values directly.
+3. Paste the rendered `scripts/jarvis-startup.sh`'s contents into the pod's **Startup Script** field. It runs on every resume, not just first boot.
 4. First resume: it pins Tailscale's state under `$WORKSPACE/tailscale-state` (survives pause — this is what stops the pod from re-registering as a new node every time), clones the repo, waits for Docker, and seeds a placeholder `project.toml` (rendered to `.env` via `scripts/render_config.py`).
 5. SSH in once. The stack is already running on placeholder secrets (step 4 started it) — `launch.sh --env=local` aborts rather than edit `project.toml` under a live container, so stop it first: `./scripts/local-stop.sh`. Optionally pull real secrets from Bitwarden (`BWS_ACCESS_TOKEN=<token> ./scripts/bws-sync.sh`), then `./scripts/launch.sh --env=local` to set (or confirm) the real `openrouter_api_key` / `litellm_master_key` / `postgres_password` values and bring it back up.
 6. From your laptop (Tailscale connected): `http://<TAILSCALE_HOSTNAME>:4000`.
@@ -106,7 +106,8 @@ Allowed sizes: `t4g.small`, `t4g.medium`, `t3.small`, `t3.medium` — anything e
 | `scripts/lib/project-toml.sh` | Shared per-key keep-or-replace prompt loop over `project.toml`, sourced by both of `launch.sh`'s env paths |
 | `scripts/launch.sh` | Interactive `project.toml` setup + launch, dispatched by `--env=local` (`docker compose up -d`) or `--env=aws` (`terraform apply`) |
 | `scripts/local-stop.sh` | Graceful local-dev teardown |
-| `scripts/jarvis-startup.sh` | Jarvis Labs pod boot sequence |
+| `scripts/jarvis-startup.sh.example` | Jarvis Labs pod boot sequence — template, checked in |
+| `scripts/jarvis-startup.sh` | Rendered by `launch.sh --env=jarvis` (real secrets — gitignored, never committed) |
 | `scripts/aws-start-stack.sh`, `aws-idle-check.sh(+.cron)` | AWS EC2 boot sequence and idle auto-shutdown |
 | `ignition/handler.py` | AWS Lambda "ignition switch" that starts/resizes the EC2 host on demand |
 | `infra/main.tf` | Terraform: provisions the EC2 instance, EIP, IAM roles, and ignition Lambda |

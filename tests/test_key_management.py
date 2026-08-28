@@ -63,6 +63,6 @@ def test_no_separate_ui_credentials_configured(compose):
 # @spec KEYS-007
 def test_no_boot_script_invokes_a_migration_command():
     scripts_dir = REPO_ROOT / "scripts"
-    for name in ("launch.sh", "aws-start-stack.sh", "jarvis-startup.sh"):
+    for name in ("launch.sh", "aws-start-stack.sh", "jarvis-startup.sh.example"):
         text = (scripts_dir / name).read_text()
         assert "migrate" not in text.lower()

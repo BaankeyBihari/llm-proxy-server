@@ -24,3 +24,4 @@
 - `docs/intent/project-config/project-config-design.md`
 - `docs/intent/local-launch/local-launch-specs.md` — consumes `CONF-009` for `[config].embedding_similarity_threshold` and `[secrets].openrouter_api_key`/`litellm_master_key`/`postgres_password`
 - `docs/intent/aws-infra/aws-infra-specs.md` — consumes `CONF-004`/`CONF-009` for `[secrets].tailscale_auth_key`; owns `scripts/bws-sync.sh`, the Bitwarden-to-`project.toml` sync this leaf deliberately doesn't integrate with
+- `docs/intent/jarvis-deploy/jarvis-deploy-specs.md` — consumes `CONF-009` for `[secrets].tailscale_auth_key` (reusing `aws-infra`'s field) via `launch.sh --env=jarvis`

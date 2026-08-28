@@ -9,6 +9,7 @@ postgres-data/
 embedding-cache/
 project.toml
 .env
+scripts/jarvis-startup.sh
 
 infra/.terraform/
 infra/terraform.tfstate*
