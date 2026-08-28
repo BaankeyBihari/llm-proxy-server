@@ -51,11 +51,15 @@ Jarvis Labs pods are paused (not terminated) between sessions, so the whole boot
 
 The EC2 instance, Elastic IP, IAM roles, and ignition Lambda are provisioned via Terraform (`infra/main.tf`) — no manual console click-through. See `docs/intent/aws-infra/aws-infra-design.md` for what it provisions and why, and `docs/intent/aws-deploy/aws-deploy-design.md` / `docs/intent/aws-ignition/aws-ignition-design.md` for the rationale behind the constraints it encodes (single-EIP cost constraint, `t3`/`t4g` family lock).
 
+**0. Generate a Tailscale auth key**
+
+[Tailscale Admin Panel](https://login.tailscale.com/admin/settings/keys) → Settings → Keys → **Generate auth key**. Check **Reusable** (the instance re-authenticates with the same key across `terraform apply` runs) and leave **Ephemeral** unchecked (the host should persist as a normal node, not disappear on disconnect). Set an expiry that outlives how long you'll leave the instance provisioned, or it'll stop reconnecting after a stop/start once the key expires. Copy the `tskey-auth-...` value — step 1 below prompts for it.
+
 **1. Provision the infra**
 ```bash
 ./scripts/launch.sh --env=aws
 ```
-Copies `project.toml.example` → `project.toml` if missing, prompts per key to keep or replace it (shared prompt loop with the local path, `scripts/lib/project-toml.sh`), renders `infra/generated.auto.tfvars.json` via `scripts/render_config.py`, then runs `terraform init`/`terraform apply` — prints `ec2_public_ip` and `ignition_switch_url`. Prompted keys: `tailscale_auth_key` (a reusable key from the Tailscale Admin Panel), `secrets_mode` (`project_toml` default, or `bitwarden` — see below), and `bws_access_token` (Bitwarden Secrets Manager machine token, required in `bitwarden` mode — see `docs/gemini/bitwarden.md`). The instance connects to Tailscale automatically on first boot — no manual `tailscale up` needed.
+Copies `project.toml.example` → `project.toml` if missing, prompts per key to keep or replace it (shared prompt loop with the local path, `scripts/lib/project-toml.sh`), renders `infra/generated.auto.tfvars.json` via `scripts/render_config.py`, then runs `terraform init`/`terraform apply` — prints `ec2_public_ip` and `ignition_switch_url`. Prompted keys: `tailscale_auth_key` (from step 0), `secrets_mode` (`project_toml` default, or `bitwarden` — see below), and `bws_access_token` (Bitwarden Secrets Manager machine token, required in `bitwarden` mode — see `docs/gemini/bitwarden.md`). The instance connects to Tailscale automatically on first boot — no manual `tailscale up` needed.
 
 To tear everything down (back to $0.00): `./scripts/aws-destroy.sh`. Both scripts keep Terraform's own plan-then-confirm prompt (no `-auto-approve`). If local Terraform state is lost, `cloud-nuke` is a documented fallback — see `docs/gemini/terraform-and-nuke-guide.md`.
 
