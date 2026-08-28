@@ -4,7 +4,7 @@
 # (terraform init/apply). See docs/intent/local-launch/local-launch-design.md
 # and docs/intent/aws-infra/aws-infra-design.md.
 # @spec LOCAL-001, LOCAL-002, LOCAL-003, LOCAL-004, LOCAL-005, LOCAL-006, LOCAL-007, LOCAL-008, LOCAL-009, LOCAL-012
-# @spec INFRA-022, INFRA-023, INFRA-029
+# @spec INFRA-022, INFRA-023, INFRA-029, INFRA-030
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -65,12 +65,24 @@ curl http://localhost:4000/v1/chat/completions \\
 EOF
 }
 
-# @spec INFRA-022, INFRA-023, INFRA-029
+# @spec INFRA-022, INFRA-023, INFRA-029, INFRA-030
 aws_launch() {
   local infra_dir=infra
 
   if [ ! -f "$TOML_FILE" ]; then
     cp "$TOML_EXAMPLE_FILE" "$TOML_FILE"
+  fi
+
+  # Pre-fill from $BWS_ACCESS_TOKEN (the bws CLI's own env var, same one
+  # bws-secrets-check.sh reads) when the field is still the untouched
+  # placeholder — never overwrites a real value already saved in
+  # project.toml. The prompt loop below still shows it as "current" and
+  # lets the operator override or accept it.
+  if [ -n "${BWS_ACCESS_TOKEN:-}" ] && grep -qx 'bws_access_token = ""' "$TOML_FILE"; then
+    awk -v tok="$BWS_ACCESS_TOKEN" '
+      $0 == "bws_access_token = \"\"" { print "bws_access_token = \"" tok "\""; next }
+      { print }
+    ' "$TOML_FILE" > "$TOML_FILE.tmp" && mv "$TOML_FILE.tmp" "$TOML_FILE"
   fi
 
   project_toml_prompt_keys "$TOML_FILE" \

@@ -45,6 +45,7 @@
 ## Local Terraform Wrapper Scripts
 
 - [x] **INFRA-022**: `scripts/launch.sh --env=aws` shall use the shared prompt loop (`CONF-009`) scoped to `[config].secrets_mode` and `[secrets].tailscale_auth_key`/`bws_access_token` in `project.toml` (seeded from `project.toml.example` if missing).
+- [x] **INFRA-030**: While the `BWS_ACCESS_TOKEN` environment variable is set and `project.toml`'s `bws_access_token` is still the placeholder `""`, `scripts/launch.sh --env=aws` shall pre-fill `bws_access_token` with `$BWS_ACCESS_TOKEN` before prompting; while `bws_access_token` already holds a non-placeholder value, the environment variable shall not overwrite it.
 - [x] **INFRA-029**: `scripts/launch.sh --env=aws` shall run `scripts/render_config.py` to produce `infra/generated.auto.tfvars.json` before running Terraform.
 - [x] **INFRA-023**: `scripts/launch.sh --env=aws` shall run `terraform -chdir=infra init` followed by `terraform -chdir=infra apply`, without `-var-file` and without `-auto-approve`.
 - [x] **INFRA-024**: `scripts/aws-destroy.sh` shall run `terraform -chdir=infra destroy`, without `-var-file` and without `-auto-approve`, and shall exit non-zero with an error message if `project.toml` does not exist.

@@ -26,9 +26,11 @@ EXAMPLE_TOML = (
 )
 
 
-def _run(script, tmp_path, bin_dir, stdin_text="", args=()):
+def _run(script, tmp_path, bin_dir, stdin_text="", args=(), extra_env=None):
     env = dict(os.environ)
     env["PATH"] = f"{bin_dir}:{env['PATH']}"
+    env.pop("BWS_ACCESS_TOKEN", None)  # isolate from the invoking shell's own env
+    env.update(extra_env or {})
     return subprocess.run(
         ["bash", str(script), *args],
         cwd=tmp_path,
@@ -40,8 +42,8 @@ def _run(script, tmp_path, bin_dir, stdin_text="", args=()):
     )
 
 
-def _run_launch(tmp_path, bin_dir, stdin_text=""):
-    return _run(LAUNCH_SCRIPT, tmp_path, bin_dir, stdin_text, args=("--env=aws",))
+def _run_launch(tmp_path, bin_dir, stdin_text="", extra_env=None):
+    return _run(LAUNCH_SCRIPT, tmp_path, bin_dir, stdin_text, args=("--env=aws",), extra_env=extra_env)
 
 
 def _write_example(tmp_path):
@@ -91,6 +93,37 @@ def test_launch_prompt_shows_current_value_and_replaces_it(tmp_path, fake_bin, c
     assert "tailscale_auth_key" in result.stdout
     assert "old-key" in result.stdout
     assert 'tailscale_auth_key = "new-key"' in (tmp_path / "project.toml").read_text()
+
+
+# @spec INFRA-030
+def test_launch_prefills_bws_token_from_env_when_placeholder(tmp_path, fake_bin, call_log):
+    bin_dir, add = fake_bin
+    add("terraform", f'echo "terraform $*" >> {call_log}')
+    _write_example(tmp_path)
+
+    result = _run_launch(
+        tmp_path, bin_dir, "\n\n\n", extra_env={"BWS_ACCESS_TOKEN": "0.env-token-value"}
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert 'bws_access_token = "0.env-token-value"' in (tmp_path / "project.toml").read_text()
+
+
+# @spec INFRA-030
+def test_launch_does_not_overwrite_existing_bws_token_with_env(tmp_path, fake_bin, call_log):
+    bin_dir, add = fake_bin
+    add("terraform", f'echo "terraform $*" >> {call_log}')
+    _write_example(tmp_path)
+    (tmp_path / "project.toml").write_text(
+        EXAMPLE_TOML.replace('bws_access_token = ""', 'bws_access_token = "real-saved-token"')
+    )
+
+    result = _run_launch(
+        tmp_path, bin_dir, "\n\n\n", extra_env={"BWS_ACCESS_TOKEN": "0.env-token-value"}
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert 'bws_access_token = "real-saved-token"' in (tmp_path / "project.toml").read_text()
 
 
 # @spec INFRA-029
