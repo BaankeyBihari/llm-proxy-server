@@ -1,8 +1,8 @@
 #!/bin/bash
 # Shared per-key keep-or-replace prompt loop over project.toml, sourced by
-# scripts/local-launch.sh and scripts/aws-launch.sh — replaces what used to
-# be two separate copies (one per .env/.tfvars syntax) now that both scripts
-# edit the same file. See docs/intent/project-config/project-config-design.md.
+# scripts/launch.sh's local and aws paths — replaces what used to be two
+# separate copies (one per .env/.tfvars syntax) now that both paths edit the
+# same file. See docs/intent/project-config/project-config-design.md.
 # @spec CONF-009
 
 # project_toml_prompt_keys <file> <key> [<key> ...]

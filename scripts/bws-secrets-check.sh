@@ -12,7 +12,7 @@ set -euo pipefail
 secrets_json=$(bws secret list --output json)
 
 # Read secrets on fd 3, keeping fd 0 (stdin) free for the interactive
-# prompts below (same technique as scripts/local-launch.sh).
+# prompts below (same technique as scripts/launch.sh).
 while IFS= read -r secret <&3; do
   id=$(echo "$secret" | jq -r '.id')
   key=$(echo "$secret" | jq -r '.key')

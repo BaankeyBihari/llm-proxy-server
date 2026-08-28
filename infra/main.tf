@@ -36,7 +36,7 @@ variable "tailscale_auth_key" {
 }
 
 variable "secrets_mode" {
-  description = "How the host obtains OPENROUTER_API_KEY/LITELLM_MASTER_KEY/POSTGRES_PASSWORD at boot: \"bitwarden\" (auto-fetch via Bitwarden Secrets Manager) or \"project_toml\" (manual transfer via ./scripts/local-launch.sh, as documented in aws-infra-design.md)."
+  description = "How the host obtains OPENROUTER_API_KEY/LITELLM_MASTER_KEY/POSTGRES_PASSWORD at boot: \"bitwarden\" (auto-fetch via Bitwarden Secrets Manager) or \"project_toml\" (manual transfer via ./scripts/launch.sh --env=local, as documented in aws-infra-design.md)."
   type        = string
   default     = "project_toml"
 
@@ -74,7 +74,7 @@ data "aws_ami" "ubuntu_arm" {
 # Zero ingress rules: Tailscale is the only path in (see high-level-design.md
 # tenets). Tailscale itself authenticates automatically at boot (authkey in
 # user_data below); the one-time manual step that remains (git clone + secrets
-# via ./scripts/local-launch.sh) goes over SSM Session Manager instead of SSH
+# via ./scripts/launch.sh --env=local) goes over SSM Session Manager instead of SSH
 # — see the IAM instance profile below.
 resource "aws_security_group" "litellm_sg" {
   name        = "litellm_egress_only"
@@ -157,7 +157,7 @@ resource "aws_instance" "litellm_server" {
               tailscale up --authkey=${var.tailscale_auth_key} --statedir=/home/ubuntu/tailscale-state --hostname=cloud-litellm
 
               # SSM agent, so the remaining manual step (git clone, and for
-              # secrets_mode = "project_toml", ./scripts/local-launch.sh) can
+              # secrets_mode = "project_toml", ./scripts/launch.sh --env=local) can
               # run over Session Manager instead of SSH (security group has no
               # ingress).
               snap install amazon-ssm-agent --classic
@@ -171,7 +171,7 @@ resource "aws_instance" "litellm_server" {
               # the only place `bws` is ever invoked on this target —
               # render_config.py never becomes Bitwarden-aware, see
               # project-config-design.md. secrets_mode = "project_toml": do
-              # nothing here — the operator runs ./scripts/local-launch.sh
+              # nothing here — the operator runs ./scripts/launch.sh --env=local
               # manually instead, as before this variable existed.
               if [ "${var.secrets_mode}" = "bitwarden" ]; then
                 curl -fsSLO https://github.com/bitwarden/sdk-sm/releases/download/bws-v0.3.1/bws-aarch64-unknown-linux-gnu-0.3.1.zip

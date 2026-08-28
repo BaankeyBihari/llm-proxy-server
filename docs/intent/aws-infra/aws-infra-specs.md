@@ -44,9 +44,9 @@
 
 ## Local Terraform Wrapper Scripts
 
-- [x] **INFRA-022**: `scripts/aws-launch.sh` shall use the shared prompt loop (`CONF-009`) scoped to `[config].secrets_mode` and `[secrets].tailscale_auth_key`/`bws_access_token` in `project.toml` (seeded from `project.toml.example` if missing).
-- [x] **INFRA-029**: `scripts/aws-launch.sh` shall run `scripts/render_config.py` to produce `infra/generated.auto.tfvars.json` before running Terraform.
-- [x] **INFRA-023**: `scripts/aws-launch.sh` shall run `terraform -chdir=infra init` followed by `terraform -chdir=infra apply`, without `-var-file` and without `-auto-approve`.
+- [x] **INFRA-022**: `scripts/launch.sh --env=aws` shall use the shared prompt loop (`CONF-009`) scoped to `[config].secrets_mode` and `[secrets].tailscale_auth_key`/`bws_access_token` in `project.toml` (seeded from `project.toml.example` if missing).
+- [x] **INFRA-029**: `scripts/launch.sh --env=aws` shall run `scripts/render_config.py` to produce `infra/generated.auto.tfvars.json` before running Terraform.
+- [x] **INFRA-023**: `scripts/launch.sh --env=aws` shall run `terraform -chdir=infra init` followed by `terraform -chdir=infra apply`, without `-var-file` and without `-auto-approve`.
 - [x] **INFRA-024**: `scripts/aws-destroy.sh` shall run `terraform -chdir=infra destroy`, without `-var-file` and without `-auto-approve`, and shall exit non-zero with an error message if `project.toml` does not exist.
 
 ## Bitwarden Vault Check Script

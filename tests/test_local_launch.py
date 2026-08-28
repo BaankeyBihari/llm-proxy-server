@@ -1,4 +1,4 @@
-"""Behavioral tests for scripts/local-launch.sh.
+"""Behavioral tests for scripts/launch.sh --env=local.
 
 Runs the real script against a tmp_path cwd, feeding prompt responses over
 stdin and a PATH-shimmed fake `docker` (same technique as the deploy-script
@@ -10,7 +10,7 @@ import subprocess
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SCRIPT = REPO_ROOT / "scripts" / "local-launch.sh"
+SCRIPT = REPO_ROOT / "scripts" / "launch.sh"
 
 EXAMPLE_TOML = (
     "[config]\n"
@@ -46,7 +46,7 @@ def _run(tmp_path, bin_dir, stdin_text):
     env = dict(os.environ)
     env["PATH"] = f"{bin_dir}:{env['PATH']}"
     return subprocess.run(
-        ["bash", str(SCRIPT)],
+        ["bash", str(SCRIPT), "--env=local"],
         cwd=tmp_path,
         env=env,
         input=stdin_text,

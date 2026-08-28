@@ -35,7 +35,7 @@ done
 
 # 4. Bootstrap secrets & launch stack. Placeholder-only, non-interactive —
 #    this script never prompts; a real deployment overwrites project.toml
-#    (and re-renders .env) via local-launch.sh after the operator SSHes in.
+#    (and re-renders .env) via launch.sh --env=local after the operator SSHes in.
 cd "$WORKSPACE"
 if [ ! -f project.toml ]; then
   cp project.toml.example project.toml

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tears down the AWS stack provisioned by scripts/aws-launch.sh.
+# Tears down the AWS stack provisioned by scripts/launch.sh --env=aws.
 # See docs/intent/aws-infra/aws-infra-design.md.
 # @spec INFRA-024
 set -euo pipefail

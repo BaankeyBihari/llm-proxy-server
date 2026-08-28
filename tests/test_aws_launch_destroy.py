@@ -1,4 +1,4 @@
-"""Behavioral tests for scripts/aws-launch.sh and scripts/aws-destroy.sh.
+"""Behavioral tests for scripts/launch.sh --env=aws and scripts/aws-destroy.sh.
 
 Same PATH-shimmed fake-bin + stdin-feeding technique as test_local_launch.py
 (fake `terraform` instead of `docker`). See aws-infra-design.md and
@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-LAUNCH_SCRIPT = REPO_ROOT / "scripts" / "aws-launch.sh"
+LAUNCH_SCRIPT = REPO_ROOT / "scripts" / "launch.sh"
 DESTROY_SCRIPT = REPO_ROOT / "scripts" / "aws-destroy.sh"
 
 EXAMPLE_TOML = (
@@ -26,11 +26,11 @@ EXAMPLE_TOML = (
 )
 
 
-def _run(script, tmp_path, bin_dir, stdin_text=""):
+def _run(script, tmp_path, bin_dir, stdin_text="", args=()):
     env = dict(os.environ)
     env["PATH"] = f"{bin_dir}:{env['PATH']}"
     return subprocess.run(
-        ["bash", str(script)],
+        ["bash", str(script), *args],
         cwd=tmp_path,
         env=env,
         input=stdin_text,
@@ -40,11 +40,15 @@ def _run(script, tmp_path, bin_dir, stdin_text=""):
     )
 
 
+def _run_launch(tmp_path, bin_dir, stdin_text=""):
+    return _run(LAUNCH_SCRIPT, tmp_path, bin_dir, stdin_text, args=("--env=aws",))
+
+
 def _write_example(tmp_path):
     (tmp_path / "project.toml.example").write_text(EXAMPLE_TOML)
 
 
-# --- aws-launch.sh --------------------------------------------------------
+# --- launch.sh --env=aws ---------------------------------------------------
 
 
 # @spec INFRA-022
@@ -53,7 +57,7 @@ def test_launch_copies_project_toml_example_when_missing(tmp_path, fake_bin, cal
     add("terraform", f'echo "terraform $*" >> {call_log}')
     _write_example(tmp_path)
 
-    result = _run(LAUNCH_SCRIPT, tmp_path, bin_dir, "\n\n\n")  # keep all three owned keys
+    result = _run_launch(tmp_path, bin_dir, "\n\n\n")  # keep all three owned keys
 
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "project.toml").read_text() == EXAMPLE_TOML
@@ -65,7 +69,7 @@ def test_launch_only_prompts_owned_keys_not_openrouter_or_litellm(tmp_path, fake
     add("terraform", f'echo "terraform $*" >> {call_log}')
     _write_example(tmp_path)
 
-    result = _run(LAUNCH_SCRIPT, tmp_path, bin_dir, "\n\n\n")
+    result = _run_launch(tmp_path, bin_dir, "\n\n\n")
 
     assert result.returncode == 0, result.stderr
     assert "openrouter_api_key" not in result.stdout
@@ -81,7 +85,7 @@ def test_launch_prompt_shows_current_value_and_replaces_it(tmp_path, fake_bin, c
         EXAMPLE_TOML.replace("tskey-auth-REPLACE_ME", "old-key")
     )
 
-    result = _run(LAUNCH_SCRIPT, tmp_path, bin_dir, "\nnew-key\n\n")  # keep, replace, keep
+    result = _run_launch(tmp_path, bin_dir, "\nnew-key\n\n")  # keep, replace, keep
 
     assert result.returncode == 0, result.stderr
     assert "tailscale_auth_key" in result.stdout
@@ -95,7 +99,7 @@ def test_launch_renders_tfvars_json_before_terraform(tmp_path, fake_bin, call_lo
     add("terraform", f'echo "terraform $*" >> {call_log}')
     _write_example(tmp_path)
 
-    result = _run(LAUNCH_SCRIPT, tmp_path, bin_dir, "\n\n\n")
+    result = _run_launch(tmp_path, bin_dir, "\n\n\n")
 
     assert result.returncode == 0, result.stderr
     import json
@@ -114,7 +118,7 @@ def test_launch_runs_terraform_init_then_apply_without_var_file_or_auto_approve(
     add("terraform", f'echo "terraform $*" >> {call_log}')
     _write_example(tmp_path)
 
-    result = _run(LAUNCH_SCRIPT, tmp_path, bin_dir, "\n\n\n")
+    result = _run_launch(tmp_path, bin_dir, "\n\n\n")
 
     assert result.returncode == 0, result.stderr
     calls = call_log.read_text()

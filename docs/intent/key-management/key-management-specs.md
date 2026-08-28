@@ -8,7 +8,7 @@
 - [x] **KEYS-004**: The `litellm` service's `depends_on` shall include `postgres`.
 
 (Readiness-insensitivity — `litellm` not requiring `postgres` to be ready before its own retry logic handles the gap — is design-doc rationale, not a separate spec; same precedent as `GATE-010`, which only tests `depends_on` membership, not readiness semantics.)
-- [x] **KEYS-007**: No boot script (`local-launch.sh`, `aws-start-stack.sh`, `jarvis-startup.sh`) shall invoke a database migration command; schema migration shall be handled automatically by LiteLLM's own startup when `DATABASE_URL` is set.
+- [x] **KEYS-007**: No boot script (`launch.sh --env=local`, `aws-start-stack.sh`, `jarvis-startup.sh`) shall invoke a database migration command; schema migration shall be handled automatically by LiteLLM's own startup when `DATABASE_URL` is set.
 
 ## Virtual Keys and Budgets
 
