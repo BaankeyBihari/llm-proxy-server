@@ -33,13 +33,13 @@ until docker info > /dev/null 2>&1; do
   sleep "$DOCKER_POLL_INTERVAL_SECS"
 done
 
-# 4. Inject secrets & launch stack.
+# 4. Bootstrap secrets & launch stack. Placeholder-only, non-interactive —
+#    this script never prompts; a real deployment overwrites project.toml
+#    (and re-renders .env) via local-launch.sh after the operator SSHes in.
 cd "$WORKSPACE"
-if [ ! -f .env ]; then
-  {
-    echo "OPENROUTER_API_KEY=your_key_here"
-    echo "LITELLM_MASTER_KEY=sk-master-key-1234"
-  } > .env
+if [ ! -f project.toml ]; then
+  cp project.toml.example project.toml
+  python3 scripts/render_config.py
 fi
 
 docker compose up -d --build

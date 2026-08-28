@@ -76,10 +76,10 @@ def test_headroom_registered_as_default_on_pre_call_guardrail(config):
 
 
 # @spec GATE-007
-def test_redis_cache_enabled_with_seven_day_ttl(config):
+def test_redis_semantic_cache_enabled_with_seven_day_ttl(config):
     settings = config["litellm_settings"]
     assert settings["cache"] is True
-    assert settings["cache_params"]["type"] == "redis"
+    assert settings["cache_params"]["type"] == "redis-semantic"
     assert settings["cache_params"]["ttl"] == 604800
 
 
@@ -97,7 +97,33 @@ def test_redis_service_caps_memory_with_lru_eviction(compose):
     assert "--maxmemory-policy allkeys-lru" in redis["command"]
 
 
+# @spec GATE-011
+def test_similarity_threshold_defaults_to_0_85_overridable_via_env(config, compose):
+    assert config["litellm_settings"]["cache_params"]["similarity_threshold"] == (
+        "os.environ/EMBEDDING_SIMILARITY_THRESHOLD"
+    )
+    litellm_env = compose["services"]["litellm"]["environment"]
+    assert "EMBEDDING_SIMILARITY_THRESHOLD=${EMBEDDING_SIMILARITY_THRESHOLD:-0.85}" in litellm_env
+
+
+# @spec GATE-012
+def test_embedding_service_uses_infinity_image_serving_bge_small_no_host_port(compose):
+    embedding = compose["services"]["embedding"]
+    assert embedding["image"] == "michaelfeil/infinity"
+    assert "BAAI/bge-small-en-v1.5" in " ".join(embedding.get("command", []))
+    assert "ports" not in embedding
+
+
+# @spec GATE-013
+def test_embedding_service_persists_weights_cache(compose):
+    embedding = compose["services"]["embedding"]
+    assert "./embedding-cache:/data" in embedding["volumes"]
+    assert "HF_HOME=/data" in embedding["environment"]
+
+
 # @spec GATE-010
-def test_litellm_depends_on_redis_and_headroom(compose):
-    depends_on = compose["services"]["litellm"]["depends_on"]
-    assert set(depends_on) == {"redis", "headroom"}
+def test_litellm_depends_on_redis_headroom_and_embedding(compose):
+    # Subset, not exact-equality: key-management-specs.md's KEYS-004 independently
+    # asserts "postgres" is also present in the same depends_on list.
+    depends_on = set(compose["services"]["litellm"]["depends_on"])
+    assert {"redis", "headroom", "embedding"} <= depends_on

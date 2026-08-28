@@ -36,13 +36,13 @@ variable "tailscale_auth_key" {
 }
 
 variable "secrets_mode" {
-  description = "How the host obtains OPENROUTER_API_KEY/LITELLM_MASTER_KEY at boot: \"bitwarden\" (auto-fetch via Bitwarden Secrets Manager) or \"env_file\" (manual transfer via ./scripts/local-launch.sh, as documented in aws-deploy-design.md)."
+  description = "How the host obtains OPENROUTER_API_KEY/LITELLM_MASTER_KEY/POSTGRES_PASSWORD at boot: \"bitwarden\" (auto-fetch via Bitwarden Secrets Manager) or \"project_toml\" (manual transfer via ./scripts/local-launch.sh, as documented in aws-infra-design.md)."
   type        = string
-  default     = "bitwarden"
+  default     = "project_toml"
 
   validation {
-    condition     = contains(["bitwarden", "env_file"], var.secrets_mode)
-    error_message = "secrets_mode must be \"bitwarden\" or \"env_file\"."
+    condition     = contains(["bitwarden", "project_toml"], var.secrets_mode)
+    error_message = "secrets_mode must be \"bitwarden\" or \"project_toml\"."
   }
 }
 
@@ -157,17 +157,20 @@ resource "aws_instance" "litellm_server" {
               tailscale up --authkey=${var.tailscale_auth_key} --statedir=/home/ubuntu/tailscale-state --hostname=cloud-litellm
 
               # SSM agent, so the remaining manual step (git clone, and for
-              # secrets_mode = "env_file", ./scripts/local-launch.sh) can run
-              # over Session Manager instead of SSH (security group has no
+              # secrets_mode = "project_toml", ./scripts/local-launch.sh) can
+              # run over Session Manager instead of SSH (security group has no
               # ingress).
               snap install amazon-ssm-agent --classic
               systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
               systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
 
               # secrets_mode = "bitwarden": fetch OPENROUTER_API_KEY /
-              # LITELLM_MASTER_KEY now, to a fixed host path rather than into
-              # the (not-yet-cloned) repo, so this doesn't have to wait on the
-              # manual clone step above. secrets_mode = "env_file": do
+              # LITELLM_MASTER_KEY / POSTGRES_PASSWORD now, to a fixed host
+              # path rather than into the (not-yet-cloned) repo, so this
+              # doesn't have to wait on the manual clone step above. This is
+              # the only place `bws` is ever invoked on this target —
+              # render_config.py never becomes Bitwarden-aware, see
+              # project-config-design.md. secrets_mode = "project_toml": do
               # nothing here — the operator runs ./scripts/local-launch.sh
               # manually instead, as before this variable existed.
               if [ "${var.secrets_mode}" = "bitwarden" ]; then

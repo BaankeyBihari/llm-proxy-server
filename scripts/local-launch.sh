@@ -1,55 +1,43 @@
 #!/bin/bash
-# Interactive .env setup: copies .env.example to .env if missing, walks
-# through each key prompting to keep or replace its current value, then
-# brings the stack up and prints a ready-to-run curl example.
-# See docs/intent/local-launch/local-launch-design.md.
-# @spec LOCAL-001, LOCAL-002, LOCAL-003, LOCAL-004, LOCAL-005, LOCAL-006, LOCAL-007, LOCAL-008, LOCAL-009
+# Interactive project.toml setup: copies project.toml.example to project.toml
+# if missing, walks through this script's owned keys prompting to keep or
+# replace each current value, renders .env via render_config.py, then brings
+# the stack up and prints a ready-to-run curl example.
+# See docs/intent/local-launch/local-launch-design.md and
+# docs/intent/project-config/project-config-design.md.
+# @spec LOCAL-001, LOCAL-002, LOCAL-003, LOCAL-004, LOCAL-005, LOCAL-006, LOCAL-007, LOCAL-008, LOCAL-009, LOCAL-012
 set -euo pipefail
 
-ENV_FILE=.env
-ENV_EXAMPLE_FILE=.env.example
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/project-toml.sh"
 
-# Abort before touching .env if the stack is already up — a live container
-# won't see .env edits until restarted, so proceeding would be misleading.
+TOML_FILE=project.toml
+TOML_EXAMPLE_FILE=project.toml.example
+
+# Abort before touching project.toml if the stack is already up — a live
+# container won't see project.toml edits until restarted, so proceeding
+# would be misleading.
 if [ -n "$(docker compose ps --status running -q)" ]; then
   echo "Stack is already running (docker compose ps shows running containers)." >&2
-  echo "Aborting — restart the stack yourself if you want it to pick up new .env values." >&2
+  echo "Aborting — restart the stack yourself if you want it to pick up new project.toml values." >&2
   exit 1
 fi
 
-if [ ! -f "$ENV_FILE" ]; then
-  cp "$ENV_EXAMPLE_FILE" "$ENV_FILE"
+if [ ! -f "$TOML_FILE" ]; then
+  cp "$TOML_EXAMPLE_FILE" "$TOML_FILE"
 fi
 
-tmp_file=$(mktemp)
+project_toml_prompt_keys "$TOML_FILE" \
+  embedding_similarity_threshold \
+  openrouter_api_key \
+  litellm_master_key \
+  postgres_password
 
-# Read .env on fd 3, keeping fd 0 (stdin) free for the interactive prompts.
-while IFS= read -r line <&3 || [ -n "$line" ]; do
-  # Pass comments and blank lines through unchanged.
-  if [ -z "$line" ] || [[ "$line" == \#* ]]; then
-    echo "$line" >> "$tmp_file"
-    continue
-  fi
-
-  key=${line%%=*}
-  current_value=${line#*=}
-
-  # printf + plain `read`, not `read -p`: some bash builds (e.g. macOS's
-  # bash 3.2) silently drop -p's prompt when stdin isn't a tty.
-  printf '%s [%s]: ' "$key" "$current_value"
-  read -r new_value
-  if [ -n "$new_value" ]; then
-    echo "$key=$new_value" >> "$tmp_file"
-  else
-    echo "$key=$current_value" >> "$tmp_file"
-  fi
-done 3< "$ENV_FILE"
-
-mv "$tmp_file" "$ENV_FILE"
+python3 "$SCRIPT_DIR/render_config.py"
 
 docker compose up -d
 
-master_key=$(grep '^LITELLM_MASTER_KEY=' "$ENV_FILE" | head -1 | cut -d= -f2- || true)
+master_key=$(grep '^LITELLM_MASTER_KEY=' .env | head -1 | cut -d= -f2- || true)
 cat <<EOF
 
 Stack is up. Try:

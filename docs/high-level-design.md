@@ -21,15 +21,17 @@ A single engineer (or small personal team) running AI coding tools from their ow
 
 - One OpenAI-compatible endpoint (`/v1/chat/completions`) fronting OpenRouter, reachable only via Tailscale.
 - Repeated identical requests hit cache in well under 1s, and cache survives container restarts and host pause/resume.
+- Semantic cache hits near-duplicate prompts (not just byte-identical), cutting cache misses from harmless rephrasing.
 - Long-context / tool-output payloads are compressed before they leave the host, cutting upstream token spend.
+- Per-device virtual keys with individual budgets and spend visibility, no external user-account system.
 - AWS deploy target never exceeds ~$3.65/month in public-IP cost and self-stops after sustained idle.
 - Both deploy targets boot unattended from a cold pause/stop with no manual intervention beyond the initial trigger (pod resume click, or Lambda ignition URL hit).
 
 ## Non-Goals
 
 - No public HTTPS endpoint, domain, or TLS certificate — Tailscale is the only network boundary.
-- No multi-tenant auth model — a single shared LiteLLM master key is sufficient for this project's user base.
-- No self-hosted model inference — all completions are proxied to OpenRouter; this project owns no model weights.
+- No external user-account system — virtual keys are operator-provisioned (via LiteLLM's `/key/generate`), not self-service signup; still a single-operator trust model, just with per-device budget isolation.
+- No self-hosted **completion** inference — all chat completions are proxied to OpenRouter; this project owns no completion-model weights. Embeddings (semantic-cache similarity only) are the one exception, self-hosted in-stack per the self-host tenet below.
 - No load balancer, NAT gateway, or secondary IPs on the AWS target — the single-EIP constraint is deliberate, not a gap to fill later.
 
 ## Tenets
@@ -38,6 +40,7 @@ A single engineer (or small personal team) running AI coding tools from their ow
 - **Network isolation over app-layer security.** Tailscale is the sole trust boundary; do not compensate for a network-layer gap by adding application-layer auth complexity.
 - **Persistent state survives ephemeral compute.** Anything that must not reset on pause/stop (Tailscale identity, Redis snapshots) lives on the host's persistent volume, never in default ephemeral paths.
 - **Cost ceiling over convenience.** Where a cost constraint (single EIP, `t3`/`t4g` small-medium whitelist, 4h idle stop) trades off against operational convenience, the cost constraint wins.
+- **Self-host over external vendor for capability gaps.** When OpenRouter lacks a capability this project needs (embeddings today), prefer a small in-stack sidecar with the same volume-mount persistence pattern as Redis/Tailscale over adding a new external API vendor and key.
 
 ## System Design
 
@@ -48,19 +51,26 @@ A single engineer (or small personal team) running AI coding tools from their ow
                  |
 [ Jarvis Labs Pod  -OR-  AWS EC2 Instance (Tailscale Installed) ]
                  |
-    [ LiteLLM Gateway :4000 ]
-      /                    \
-(Pre-Call Guardrail)   (Semantic Cache + Persistence)
-    v                        v
-[ Headroom :8787 ]     [ Redis :6379 (Volume Mounted) ]
-    \                      /
-     v                    v
+             [ LiteLLM Gateway :4000 ]
+      /            |             |            \
+(Pre-Call    (Semantic Cache  (Virtual Keys  (Response
+ Guardrail)   + Persistence)   + Budgets)     Cache)
+    v              v               v              v
+[Headroom]   [Embedding      [Postgres      [Redis :6379
+  :8787]      Sidecar        (Volume         (Volume
+  |            (Volume        Mounted)]       Mounted)]
+  |            Mounted)]
+  |               |
+   \             /
+    v           v
   [ OpenRouter API (Upstream) ]
 ```
 
-- **LiteLLM** — central router: OpenAI-compatible endpoint translation, model list (including an OpenRouter wildcard passthrough), guardrail invocation, Redis-backed response caching.
+- **LiteLLM** — central router: OpenAI-compatible endpoint translation, model list (including an OpenRouter wildcard passthrough), guardrail invocation, Redis-backed response caching, virtual-key issuance and budget enforcement.
 - **Headroom** — sidecar invoked by LiteLLM as a `pre_call` guardrail; compresses long context / tool output before the request reaches OpenRouter.
 - **Redis** — response cache with a 7-day TTL (bounds staleness) and `allkeys-lru` eviction under a 1.5GB memory cap (bounds runaway growth); volume-mounted so pause/resume and container restarts don't lose cache state.
+- **Embedding sidecar** — self-hosted OpenAI-embeddings-API-compatible service, invoked by LiteLLM's semantic-cache backend to score prompt similarity; model weights volume-mounted so pause/resume doesn't force a re-download, only a reload.
+- **Postgres** — backs LiteLLM's virtual-key management (`/key/generate`, `/ui`, per-key budgets and spend logs); volume-mounted for the same persistence reason as Redis.
 - **Tailscale** — installed on the host (not containerized); provides the only reachable network path to port 4000. Its machine-identity state directory is pinned onto the host's persistent volume so pause/resume doesn't re-register the host as a new node.
 - **Deploy-target boot scripts** — target-specific (Jarvis startup script vs. AWS `start_stack.sh` + `idle_check.sh` + Lambda ignition); everything above the boot script is shared.
 
@@ -79,6 +89,9 @@ A single engineer (or small personal team) running AI coding tools from their ow
 | Local setup is one interactive script (`scripts/local-launch.sh`) that populates `.env` per-key and then brings the stack up, not a one-shot `cp .env.example .env` | Leave `cp .env.example .env` as the only documented step; keep `.env` setup and `docker compose up` as separate manual steps | A silent copy leaves placeholder secrets in place with no prompt to replace them; per-key confirmation surfaces that at setup time instead of at a failed OpenRouter auth call. Bundling the launch turns "get a working stack" into one command; a running-container guard stops it from silently re-prompting over a live stack. |
 | AWS app-secret provisioning is a Terraform `secrets_mode` switch: `bitwarden` (default, auto-fetches `.env` via Bitwarden Secrets Manager machine token at boot) or `env_file` (manual `.env` transfer, unchanged from before) | Bake credentials into `user_data` unconditionally; require Bitwarden with no fallback | Bitwarden Secrets Manager keeps the primary password vault locked (a scoped, revocable machine token instead) and closes the AWS target's last manual-intervention gap for operators who set one up; `env_file` stays as a zero-new-account fallback. |
 | Bitwarden vault content is reviewed/updated via a standalone operator script (`scripts/bws-secrets-check.sh`), not folded into `aws-launch.sh` | Extend `aws-launch.sh` to also touch the bws vault during `terraform apply` | Vault maintenance happens whenever an operator wants to check/rotate a value, not only at deploy time; keeping it a separate script leaves `aws-launch.sh` scoped to `terraform.tfvars`. |
+| Semantic-cache embedding provider is a self-hosted sidecar, not an external API | External embedding API (e.g. OpenAI) | Self-host tenet; a second external vendor/key for a narrow capability gap isn't worth it, and a volume-mounted weights cache reuses the same pause/resume persistence pattern already established for Redis and Tailscale state. |
+| Virtual-key management is Postgres in-stack, using LiteLLM's built-in `/key/generate` + `/ui` | Per-device OpenRouter-native keys, no LiteLLM DB | Real per-key budgets and a unified spend view across devices are worth one more self-hosted stateful service on the same cost model as Redis (no managed DB, no recurring cloud spend); the added RAM pressure on `t3.small`/`t4g.small` is an accepted trade-off, sized if/when it actually OOMs rather than upfront. |
+| Canonical secrets/config source is `project.toml`, generated into `.env` (Compose) and `.auto.tfvars.json` (Terraform) by a small script | Every consumer script (`local-launch.sh`, `aws-launch.sh`, `jarvis-startup.sh`, `bws-secrets-check.sh`) live-parses TOML at runtime | Native format per consumer (Compose's dotenv, Terraform's auto-loaded tfvars.json) avoids a parsing shim duplicated across four scripts; matches "boring over clever." |
 
 ## Success Metrics
 

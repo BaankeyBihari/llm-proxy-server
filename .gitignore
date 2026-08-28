@@ -5,9 +5,12 @@
 __pycache__/
 .pytest_cache/
 redis-data/
+postgres-data/
+embedding-cache/
+project.toml
 .env
 
 infra/.terraform/
 infra/terraform.tfstate*
 infra/lambda_ignition.zip
-infra/terraform.tfvars
+infra/generated.auto.tfvars.json

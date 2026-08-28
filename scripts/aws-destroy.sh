@@ -4,12 +4,16 @@
 # @spec INFRA-024
 set -euo pipefail
 
-INFRA_DIR=infra
-VARS_FILE="$INFRA_DIR/terraform.tfvars"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-if [ ! -f "$VARS_FILE" ]; then
-  echo "$VARS_FILE not found — nothing to destroy (run this from the repo root)." >&2
+INFRA_DIR=infra
+TOML_FILE=project.toml
+
+if [ ! -f "$TOML_FILE" ]; then
+  echo "$TOML_FILE not found — nothing to destroy (run this from the repo root)." >&2
   exit 1
 fi
 
-terraform -chdir="$INFRA_DIR" destroy -var-file=terraform.tfvars
+python3 "$SCRIPT_DIR/render_config.py"
+
+terraform -chdir="$INFRA_DIR" destroy

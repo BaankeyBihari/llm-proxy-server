@@ -1,4 +1,4 @@
-# @spec GATE-001, GATE-002, GATE-003, GATE-004, GATE-005, GATE-006, GATE-007
+# @spec GATE-001, GATE-002, GATE-003, GATE-004, GATE-005, GATE-006, GATE-007, GATE-011
 model_list:
   # 1. Smart Auto-Router (best overall model)
   - model_name: smart-auto
@@ -45,9 +45,10 @@ guardrails:
 litellm_settings:
   cache: true
   cache_params:
-    type: redis
+    type: redis-semantic
     host: os.environ/REDIS_HOST
     port: 6379
     ttl: 604800 # 7-day TTL to survive the work week
+    similarity_threshold: os.environ/EMBEDDING_SIMILARITY_THRESHOLD
   forward_client_headers_to_llm_api: true
   drop_params: true

@@ -159,11 +159,13 @@ def test_outputs_ip_and_function_url(tf_text):
 
 
 # @spec INFRA-018
-def test_secrets_mode_defaults_to_bitwarden_and_rejects_other_values(tf_text):
+def test_secrets_mode_defaults_to_project_toml_and_rejects_other_values(tf_text):
     var_block = _block(tf_text, re.compile(r'variable\s+"secrets_mode"\s*\{'))
-    assert re.search(r'default\s*=\s*"bitwarden"', var_block)
+    assert re.search(r'default\s*=\s*"project_toml"', var_block)
     validation = _block(var_block, re.compile(r"validation\s*\{"))
-    assert re.search(r'contains\(\["bitwarden",\s*"env_file"\],\s*var\.secrets_mode\)', validation)
+    assert re.search(
+        r'contains\(\["bitwarden",\s*"project_toml"\],\s*var\.secrets_mode\)', validation
+    )
 
 
 # @spec INFRA-019

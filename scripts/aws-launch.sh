@@ -1,45 +1,30 @@
 #!/bin/bash
-# Interactive infra/terraform.tfvars setup: copies terraform.tfvars.example to
-# terraform.tfvars if missing, walks through each key prompting to keep or
-# replace its current value (same UX as scripts/local-launch.sh, adapted for
-# Terraform's `key = "value"` syntax), then provisions the AWS stack.
-# See docs/intent/aws-infra/aws-infra-design.md.
-# @spec INFRA-022, INFRA-023
+# Interactive project.toml setup for the AWS target: copies project.toml.example
+# to project.toml if missing, walks through this script's owned keys prompting
+# to keep or replace each current value, renders infra/generated.auto.tfvars.json
+# via render_config.py, then provisions the AWS stack.
+# See docs/intent/aws-infra/aws-infra-design.md and
+# docs/intent/project-config/project-config-design.md.
+# @spec INFRA-022, INFRA-023, INFRA-029
 set -euo pipefail
 
-INFRA_DIR=infra
-VARS_FILE="$INFRA_DIR/terraform.tfvars"
-VARS_EXAMPLE_FILE="$INFRA_DIR/terraform.tfvars.example"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/project-toml.sh"
 
-if [ ! -f "$VARS_FILE" ]; then
-  cp "$VARS_EXAMPLE_FILE" "$VARS_FILE"
+INFRA_DIR=infra
+TOML_FILE=project.toml
+TOML_EXAMPLE_FILE=project.toml.example
+
+if [ ! -f "$TOML_FILE" ]; then
+  cp "$TOML_EXAMPLE_FILE" "$TOML_FILE"
 fi
 
-tmp_file=$(mktemp)
+project_toml_prompt_keys "$TOML_FILE" \
+  secrets_mode \
+  tailscale_auth_key \
+  bws_access_token
 
-# Read terraform.tfvars on fd 3, keeping fd 0 (stdin) free for prompts.
-while IFS= read -r line <&3 || [ -n "$line" ]; do
-  # Pass comments and blank lines through unchanged.
-  if [ -z "$line" ] || [[ "$line" == \#* ]]; then
-    echo "$line" >> "$tmp_file"
-    continue
-  fi
-
-  key=$(echo "${line%%=*}" | xargs)
-  current_value=$(echo "${line#*=}" | xargs)
-  current_value=${current_value%\"}
-  current_value=${current_value#\"}
-
-  printf '%s [%s]: ' "$key" "$current_value"
-  read -r new_value
-  if [ -n "$new_value" ]; then
-    echo "$key = \"$new_value\"" >> "$tmp_file"
-  else
-    echo "$key = \"$current_value\"" >> "$tmp_file"
-  fi
-done 3< "$VARS_FILE"
-
-mv "$tmp_file" "$VARS_FILE"
+python3 "$SCRIPT_DIR/render_config.py"
 
 terraform -chdir="$INFRA_DIR" init
-terraform -chdir="$INFRA_DIR" apply -var-file=terraform.tfvars
+terraform -chdir="$INFRA_DIR" apply

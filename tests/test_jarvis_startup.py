@@ -5,6 +5,7 @@ BOOT_SLEEP_SECS, DOCKER_POLL_INTERVAL_SECS) precisely so it's testable this
 way without real Tailscale/Docker/Git — see jarvis-deploy-design.md.
 """
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -25,11 +26,33 @@ def _run(tmp_path, fake_bin, workspace, env_overrides=None):
     )
 
 
+def _seed_repo_files(workspace):
+    """Simulates what a real `git clone` of this repo would bring along:
+    project.toml.example and scripts/render_config.py. The fake `git` below
+    only creates `.git`, so tests that pre-create an "already cloned"
+    workspace need to seed these themselves.
+    """
+    workspace.mkdir(parents=True, exist_ok=True)
+    (workspace / "scripts").mkdir(exist_ok=True)
+    shutil.copy(REPO_ROOT / "project.toml.example", workspace / "project.toml.example")
+    shutil.copy(
+        REPO_ROOT / "scripts" / "render_config.py", workspace / "scripts" / "render_config.py"
+    )
+
+
 def _basic_fakes(add, call_log):
     add("sudo", f'echo "sudo $*" >> {call_log}\nexec "$@"')
     add("tailscaled", f'echo "tailscaled $*" >> {call_log}')
     add("tailscale", f'echo "tailscale $*" >> {call_log}')
-    add("git", f'echo "git $*" >> {call_log}\nif [ "$1" = "clone" ]; then mkdir -p "$3/.git"; fi')
+    add(
+        "git",
+        f'echo "git $*" >> {call_log}\n'
+        f'if [ "$1" = "clone" ]; then\n'
+        f'  mkdir -p "$3/.git" "$3/scripts"\n'
+        f'  cp "{REPO_ROOT}/project.toml.example" "$3/project.toml.example"\n'
+        f'  cp "{REPO_ROOT}/scripts/render_config.py" "$3/scripts/render_config.py"\n'
+        f"fi\n",
+    )
     add("docker", f'echo "docker $*" >> {call_log}\nif [ "$1" = "info" ]; then exit 0; fi')
 
 
@@ -38,7 +61,7 @@ def test_pins_tailscale_statedir_under_workspace(tmp_path, fake_bin, call_log):
     bin_dir, add = fake_bin
     _basic_fakes(add, call_log)
     workspace = tmp_path / "workspace"
-    workspace.mkdir()
+    _seed_repo_files(workspace)
     (workspace / ".git").mkdir()
 
     result = _run(tmp_path, bin_dir, workspace)
@@ -67,7 +90,7 @@ def test_pulls_when_workspace_already_has_git_dir(tmp_path, fake_bin, call_log):
     bin_dir, add = fake_bin
     _basic_fakes(add, call_log)
     workspace = tmp_path / "workspace"
-    workspace.mkdir()
+    _seed_repo_files(workspace)
     (workspace / ".git").mkdir()
 
     result = _run(tmp_path, bin_dir, workspace)
@@ -98,7 +121,7 @@ def test_waits_for_docker_daemon_before_compose_up(tmp_path, fake_bin, call_log)
         f"fi\n",
     )
     workspace = tmp_path / "workspace"
-    workspace.mkdir()
+    _seed_repo_files(workspace)
     (workspace / ".git").mkdir()
 
     result = _run(tmp_path, bin_dir, workspace)
@@ -112,36 +135,47 @@ def test_waits_for_docker_daemon_before_compose_up(tmp_path, fake_bin, call_log)
 
 
 # @spec JARVIS-004
-def test_bootstraps_env_file_when_missing(tmp_path, fake_bin, call_log):
+def test_bootstraps_project_toml_and_renders_env_when_missing(tmp_path, fake_bin, call_log):
     bin_dir, add = fake_bin
     _basic_fakes(add, call_log)
     workspace = tmp_path / "workspace"
-    workspace.mkdir()
+    _seed_repo_files(workspace)
     (workspace / ".git").mkdir()
 
     result = _run(tmp_path, bin_dir, workspace)
 
     assert result.returncode == 0, result.stderr
-    env_file = workspace / ".env"
-    assert env_file.exists()
-    contents = env_file.read_text()
-    assert "OPENROUTER_API_KEY" in contents
-    assert "LITELLM_MASTER_KEY" in contents
+    assert (workspace / "project.toml").exists()
+    env_contents = (workspace / ".env").read_text()
+    assert "OPENROUTER_API_KEY=your_openrouter_key_here" in env_contents
+    assert "LITELLM_MASTER_KEY=sk-master-key-1234" in env_contents
 
 
 # @spec JARVIS-004
-def test_does_not_overwrite_existing_env_file(tmp_path, fake_bin, call_log):
+def test_does_not_overwrite_existing_project_toml(tmp_path, fake_bin, call_log):
     bin_dir, add = fake_bin
     _basic_fakes(add, call_log)
     workspace = tmp_path / "workspace"
-    workspace.mkdir()
+    _seed_repo_files(workspace)
     (workspace / ".git").mkdir()
-    (workspace / ".env").write_text("OPENROUTER_API_KEY=real-key\n")
+    real_toml = (
+        "[config]\n"
+        'secrets_mode = "project_toml"\n'
+        "embedding_similarity_threshold = 0.85\n"
+        "\n"
+        "[secrets]\n"
+        'openrouter_api_key = "real-key"\n'
+        'litellm_master_key = "sk-real"\n'
+        'postgres_password = "pg-real"\n'
+        'tailscale_auth_key = "tskey-real"\n'
+        'bws_access_token = ""\n'
+    )
+    (workspace / "project.toml").write_text(real_toml)
 
     result = _run(tmp_path, bin_dir, workspace)
 
     assert result.returncode == 0, result.stderr
-    assert (workspace / ".env").read_text() == "OPENROUTER_API_KEY=real-key\n"
+    assert (workspace / "project.toml").read_text() == real_toml
 
 
 # @spec JARVIS-005
