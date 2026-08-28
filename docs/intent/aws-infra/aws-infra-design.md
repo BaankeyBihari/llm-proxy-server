@@ -7,7 +7,7 @@ prefix: INFRA
 
 ## Context and Design Philosophy
 
-This leaf owns the Terraform config (`infra/main.tf`) that provisions the physical AWS resources the other AWS-side leaves run on: the EC2 instance and Elastic IP `aws-deploy`'s boot/idle scripts run on, and the IAM role, Lambda function, and Function URL that expose `aws-ignition`'s request-handling logic. It owns **provisioning and teardown only** — it does not own boot-script behavior (`aws-deploy`) or request-handling logic (`aws-ignition`); it packages `ignition/handler.py` unmodified as the Lambda's deployed source.
+This leaf owns the Terraform config (`infra/main.tf`) that provisions the physical AWS resources the other AWS-side leaves run on: the EC2 instance and Elastic IP `aws-deploy`'s boot/idle scripts run on, and the IAM role, Lambda function, and Function URL that expose `aws-ignition`'s request-handling logic. It owns **provisioning and teardown**, plus the Bitwarden Secrets Manager integration `secrets_mode = "bitwarden"` depends on — both the boot-time fetch and the operator-side vault check/update script, since both sides read the same `BWS_ACCESS_TOKEN`-scoped project. It does not own boot-script behavior (`aws-deploy`) or request-handling logic (`aws-ignition`); it packages `ignition/handler.py` unmodified as the Lambda's deployed source.
 
 Terraform replaces the manual console click-through implied by `docs/gemini/initial-survey.md`'s original setup steps. `terraform destroy` is the primary teardown path back to $0.00; `cloud-nuke` is a documented fallback for when local Terraform state is lost, not code this repo ships or tests.
 
@@ -38,6 +38,18 @@ A `secrets_mode` variable (`"bitwarden"` default, or `"env_file"`) picks how the
 - **`env_file`**: `user_data` does nothing extra. The operator runs `./scripts/local-launch.sh` over the same Session Manager session used for the repo clone, exactly as before this variable existed.
 
 `scripts/aws-launch.sh` (see below) is what actually sets `secrets_mode` and `bws_access_token` at `apply` time — an operator doesn't hand-edit `main.tf` or type `-var` flags per run.
+
+## Bitwarden Vault Check Script
+
+`scripts/bws-secrets-check.sh` runs on the operator's laptop, independent of `terraform apply` — reviewing/updating what's actually stored in the Bitwarden Secrets Manager project is a vault-maintenance task, not a deploy step, so it isn't wired into `aws-launch.sh`.
+
+It reads the machine account token from the `BWS_ACCESS_TOKEN` environment variable — the same variable the `bws` CLI itself reads natively, and the same one `user_data` sets inline at boot (`Secrets (secrets_mode)`, above) — rather than inventing a second place to store it. No project ID is passed to `bws secret list`; like the boot-time fetch, this assumes the token's machine account is scoped to exactly one project (`docs/gemini/bitwarden.md`'s setup), which is what "this project" means in the script's UX.
+
+For each secret returned by `bws secret list --output json` (parsed with `jq`, the only way to recover each secret's ID alongside its key/value — `bws`'s other output formats either drop the ID or aren't structured), the script prints `key [current_value]` and prompts for a replacement — identical keep-or-replace UX to `local-launch.sh`/`aws-launch.sh`, plaintext values (no masking, matching those scripts' existing convention). A non-empty response calls `bws secret edit --value "$new_value" "$secret_id"` against that secret's ID; an empty response leaves it untouched.
+
+`BWS_ACCESS_TOKEN` (this script's env var) and `infra/terraform.tfvars`' `bws_access_token` (what `aws-launch.sh` writes) are the same token value held in two separate places — setting one does not set the other; an operator switching between the two scripts re-supplies it each time.
+
+Editing a secret here only changes what's stored in the Bitwarden project. It does not reach an already-booted EC2 host: `/home/ubuntu/.env` is written once, at first boot (INFRA-020/021), and this script never connects to the instance. An operator who wants a changed secret live on a running host still has to re-run the boot-time fetch (or a fresh `terraform apply`/instance replacement) themselves.
 
 ## Local Terraform Wrapper Scripts
 
@@ -93,6 +105,10 @@ EC2 public IP (from the EIP) and the ignition switch's Function URL, printed aft
 | `secrets_mode` variable validation | `validation` block restricting the variable to `["bitwarden", "env_file"]` | Leave it a free-form string, fail only inside `user_data`'s bash `if` at boot time | A typo'd value should fail fast at `terraform plan`/`apply`, not silently skip both branches on a running instance discovered later. |
 | `aws-launch.sh` / `aws-destroy.sh` approval flag | No `-auto-approve` on either; Terraform's own plan-then-confirm stays | `-auto-approve` on both, matching `docs/gemini/terraform-and-nuke-guide.md`'s wrapper scripts | `destroy` is irreversible (EBS volume, EIP release); `apply` is reversible but still costs money per run. Keeping Terraform's native confirmation on both matches this repo's existing pattern of guarding rather than blindly auto-approving (`local-launch.sh`'s running-container guard, `local-stop.sh`'s graceful-only stop). |
 | Reusing `local-launch.sh`'s prompt loop for Terraform variables | A near-identical loop in `aws-launch.sh`, adapted for `.tfvars`' `key = "value"` syntax instead of `.env`'s `KEY=value` | Extract a shared shell function/library both scripts source | Two ~15-line loops differing only in line syntax don't justify a shared library in a project with no other shell tooling infrastructure; each script stays copy-pasteable and readable standalone. |
+| Where the Bitwarden vault check/update script lives | Folded into `aws-infra` (`scripts/bws-secrets-check.sh`), not a new leaf | A new sibling leaf (e.g. `bws-secrets`) owning its own EARS prefix | This leaf already owns the Bitwarden integration's consuming side (`secrets_mode`, INFRA-018..021); a second leaf for the same project's write side would split one integration across two docs for one script. |
+| `bws-secrets-check.sh`'s access-token source | `BWS_ACCESS_TOKEN` env var (the `bws` CLI's own native var) | A new `--access-token` flag, or reading it out of `infra/terraform.tfvars` | Reusing the CLI's own env var needs no new storage or parsing; `terraform.tfvars` only exists once an operator has run `aws-launch.sh`, but the vault check is useful before that too. |
+| `bws-secrets-check.sh` project scoping | No project ID passed to `bws secret list` — relies on the machine account token being scoped to one project | Accept a project ID/name argument and pass it through | Matches the existing boot-time fetch (`bws secret list --output env`, INFRA-020), which makes the same assumption; `docs/gemini/bitwarden.md`'s setup only ever creates one project. |
+| `bws-secrets-check.sh`'s JSON parsing | `jq`, a new prerequisite for this script | Hand-parse `bws`'s TSV/env output with `cut`/`grep` | `bws`'s `env`/`tsv` formats don't carry the secret ID needed for `bws secret edit <SECRET_ID>`; only `json` does. `jq` is the standard tool for that, and hand-rolled JSON parsing in bash is more code and more fragile than requiring one more common CLI dependency alongside `terraform`/`aws`/`bws` this leaf already assumes. |
 
 ## Open Questions & Future Decisions
 

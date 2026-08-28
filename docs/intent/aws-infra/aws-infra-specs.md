@@ -47,3 +47,10 @@
 - [x] **INFRA-022**: `scripts/aws-launch.sh` shall, for each `key = "value"` line in `infra/terraform.tfvars` (seeded from `infra/terraform.tfvars.example` if missing), display the current value and prompt for a replacement, writing an empty response back as the current value and a non-empty response as the new value.
 - [x] **INFRA-023**: `scripts/aws-launch.sh` shall run `terraform -chdir=infra init` followed by `terraform -chdir=infra apply -var-file=terraform.tfvars`, without `-auto-approve`.
 - [x] **INFRA-024**: `scripts/aws-destroy.sh` shall run `terraform -chdir=infra destroy -var-file=terraform.tfvars`, without `-auto-approve`, and shall exit non-zero with an error message if `infra/terraform.tfvars` does not exist.
+
+## Bitwarden Vault Check Script
+
+- [x] **INFRA-025**: `scripts/bws-secrets-check.sh` shall run `bws secret list --output json` with no project ID argument and no `--access-token` flag, relying on `BWS_ACCESS_TOKEN` from the environment.
+- [x] **INFRA-026**: For each secret returned, the script shall print that secret's key and current value in plaintext, then prompt for a replacement value.
+- [x] **INFRA-027**: An empty response to the prompt shall leave that secret unchanged; a non-empty response shall call `bws secret edit --value "<new_value>" <secret_id>` for that secret's ID.
+- [x] **INFRA-028**: The script shall use `set -euo pipefail` and shall not add its own handling for a missing `BWS_ACCESS_TOKEN`, a missing `bws` CLI, an empty secret list, or a failing `bws` command — these shall propagate as `bws`'s and bash's own errors.

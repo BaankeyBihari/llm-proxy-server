@@ -47,6 +47,8 @@ Copies `infra/terraform.tfvars.example` → `infra/terraform.tfvars` if missing,
 
 To tear everything down (back to $0.00): `./scripts/aws-destroy.sh`. Both scripts keep Terraform's own plan-then-confirm prompt (no `-auto-approve`). If local Terraform state is lost, `cloud-nuke` is a documented fallback — see `docs/gemini/terraform-and-nuke-guide.md`.
 
+To review or update what's actually stored in the Bitwarden vault (independent of `terraform apply`): `BWS_ACCESS_TOKEN=<token> ./scripts/bws-secrets-check.sh`. Lists each secret with its current value and prompts to keep or replace it, same UX as above. Requires `bws` and `jq`. Doesn't touch an already-booted host — see `docs/intent/aws-infra/aws-infra-design.md`.
+
 **2. One-time host setup (Session Manager, not SSH — the security group has no ingress rules)**
 ```bash
 aws ssm start-session --target <instance-id>
@@ -84,6 +86,7 @@ Allowed sizes: `t4g.small`, `t4g.medium`, `t3.small`, `t3.medium` — anything e
 | `ignition/handler.py` | AWS Lambda "ignition switch" that starts/resizes the EC2 host on demand |
 | `infra/main.tf` | Terraform: provisions the EC2 instance, EIP, IAM roles, and ignition Lambda |
 | `scripts/aws-launch.sh`, `aws-destroy.sh` | Interactive `terraform.tfvars` setup + `terraform apply`, and `terraform destroy` |
+| `scripts/bws-secrets-check.sh` | Reviews/updates secrets in the Bitwarden vault directly, independent of Terraform |
 | `docs/high-level-design.md`, `docs/intent/` | Design intent (HLD, per-component LLDs, EARS specs) |
 | `docs/gemini/` | Original research this project was built from |
 
