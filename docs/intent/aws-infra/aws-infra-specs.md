@@ -35,17 +35,9 @@
 
 - [x] **INFRA-014**: The Terraform config shall output the EC2 instance's public IP and the Lambda Function URL.
 
-## Secrets (`secrets_mode`)
-
-- [x] **INFRA-018**: The `secrets_mode` variable shall default to `"project_toml"` and its `validation` block shall reject any value other than `"bitwarden"` or `"project_toml"`.
-- [x] **INFRA-019**: The `bws_access_token` variable shall be marked `sensitive` and default to an empty string.
-- [x] **INFRA-020**: While `secrets_mode` is `"bitwarden"`, the EC2 `user_data` shall install the `bws` CLI and run `bws secret list --output env`, authenticated with `var.bws_access_token`.
-- [x] **INFRA-021**: The `user_data`'s Bitwarden secrets fetch shall write its output to `/home/ubuntu/.env`, not into a repository path.
-
 ## Local Terraform Wrapper Scripts
 
-- [x] **INFRA-022**: `scripts/launch.sh --env=aws` shall use the shared prompt loop (`CONF-009`) scoped to `[config].secrets_mode` and `[secrets].tailscale_auth_key`/`bws_access_token` in `project.toml` (seeded from `project.toml.example` if missing).
-- [x] **INFRA-030**: While the `BWS_ACCESS_TOKEN` environment variable is set and `project.toml`'s `bws_access_token` is still the placeholder `""`, `scripts/launch.sh --env=aws` shall pre-fill `bws_access_token` with `$BWS_ACCESS_TOKEN` before prompting; while `bws_access_token` already holds a non-placeholder value, the environment variable shall not overwrite it.
+- [x] **INFRA-022**: `scripts/launch.sh --env=aws` shall use the shared prompt loop (`CONF-009`) scoped to `[secrets].tailscale_auth_key` in `project.toml` (seeded from `project.toml.example` if missing).
 - [x] **INFRA-029**: `scripts/launch.sh --env=aws` shall run `scripts/render_config.py` to produce `infra/generated.auto.tfvars.json` before running Terraform.
 - [x] **INFRA-023**: `scripts/launch.sh --env=aws` shall run `terraform -chdir=infra init` followed by `terraform -chdir=infra apply`, without `-var-file` and without `-auto-approve`.
 - [x] **INFRA-024**: `scripts/aws-destroy.sh` shall run `terraform -chdir=infra destroy`, without `-var-file` and without `-auto-approve`, and shall exit non-zero with an error message if `project.toml` does not exist.
@@ -56,3 +48,9 @@
 - [x] **INFRA-026**: For each secret returned, the script shall print that secret's key and current value in plaintext, then prompt for a replacement value.
 - [x] **INFRA-027**: An empty response to the prompt shall leave that secret unchanged; a non-empty response shall call `bws secret edit --value "<new_value>" <secret_id>` for that secret's ID.
 - [x] **INFRA-028**: The script shall use `set -euo pipefail` and shall not add its own handling for a missing `BWS_ACCESS_TOKEN`, a missing `bws` CLI, an empty secret list, or a failing `bws` command — these shall propagate as `bws`'s and bash's own errors.
+
+## Bitwarden Sync Script
+
+- [x] **INFRA-031**: `scripts/bws-sync.sh` shall read `BWS_ACCESS_TOKEN` from the environment (no flag) and run `bws secret list --output env`, and shall copy `project.toml.example` to `project.toml` first if `project.toml` does not exist.
+- [x] **INFRA-032**: While Bitwarden's output includes a value for `OPENROUTER_API_KEY`, `LITELLM_MASTER_KEY`, `POSTGRES_PASSWORD`, or `TAILSCALE_AUTH_KEY`, the script shall overwrite `project.toml`'s corresponding `openrouter_api_key`, `litellm_master_key`, `postgres_password`, or `tailscale_auth_key` field; while a given key is absent from that output, the script shall leave the corresponding field unchanged.
+- [x] **INFRA-033**: The script shall use `set -euo pipefail` and shall not add its own handling for a missing `BWS_ACCESS_TOKEN`, a missing `bws` CLI, or a failing `bws` command — these shall propagate as `bws`'s and bash's own errors.

@@ -17,7 +17,6 @@ Two sections, not six single-purpose tables — `[config]` for non-secret settin
 
 ```toml
 [config]
-secrets_mode = "project_toml"       # or "bitwarden" — AWS-only, opt in via launch.sh --env=aws
 embedding_similarity_threshold = 0.85
 
 [secrets]
@@ -25,30 +24,22 @@ openrouter_api_key = "your_openrouter_key_here"
 litellm_master_key = "sk-master-key-1234"
 postgres_password = "changeme"
 tailscale_auth_key = "tskey-auth-REPLACE_ME"
-bws_access_token = ""
 ```
 
 Checked in as `project.toml.example`; `project.toml` itself is gitignored, same as `.env`/`terraform.tfvars` were.
 
-`[config]` and `[secrets]` are both always read straight from `project.toml`, unconditionally — **`render_config.py` never branches on `secrets_mode` and never calls `bws`.** `secrets_mode` is a Terraform-only concept (see below); `project-config` renders it through for Terraform to read, but doesn't act on it itself.
+`[config]` and `[secrets]` are both always read straight from `project.toml`, unconditionally, by `render_config.py` — a straight read-and-split, no branching on any value inside `project.toml`.
 
-## `secrets_mode`: Terraform-Only, Not a Render-Time Toggle
+## Bitwarden as a Local Secrets Source
 
-`secrets_mode` (`"bitwarden"` or `"project_toml"`) still lives in `[config]` and still gets rendered into `infra/generated.auto.tfvars.json` for Terraform — that part is unchanged from `aws-infra`'s original `bitwarden`/`env_file` variable, just relocated into `project.toml` alongside everything else and renamed to describe reality (`env_file` stopped being accurate once `.env` became generated, not hand-edited).
-
-What it does **not** do: change how `render_config.py` resolves `.env`. An earlier draft of this doc had `render_config.py` itself branch on `secrets_mode` and shell out to `bws secret list` when in Bitwarden mode — rejected. That would mean `bws_access_token` has to live in the EC2 host's own `project.toml` (not just Terraform state) and the `bws` CLI becomes a live, repeatedly-callable dependency from inside the running instance, not the one-shot boot-time fetch it is today. Deliberately not doing that — Bitwarden stays a **pre-clone, `user_data`-only bootstrap**, exactly as it already was:
-
-- `user_data` fetches `OPENROUTER_API_KEY`/`LITELLM_MASTER_KEY`/`POSTGRES_PASSWORD` from `bws` directly to `/home/ubuntu/.env`, once, before the repo (and `project.toml`) even exist on the host.
-- `render_config.py` and `launch.sh --env=local` never know or care that this happened. If an operator later runs `launch.sh --env=local` on that host, it prompts through `project.toml` and renders `.env` from it normally — same as any other target — which **will overwrite** the Bitwarden-fetched values with whatever's in `project.toml` at that point. This is accepted, not fixed: the documented Bitwarden workflow (`README.md`) never tells an operator to run `launch.sh --env=local` on a Bitwarden-provisioned host in the first place (`cp ~/.env` is the documented step); an operator who deviates from that is knowingly taking over manual management from that point on.
+`scripts/bws-sync.sh` (owned by `aws-infra` — see its design doc's "Bitwarden Sync Script" section) is an optional upstream step that pulls `openrouter_api_key`/`litellm_master_key`/`postgres_password`/`tailscale_auth_key` from Bitwarden Secrets Manager and writes them into `project.toml`, before the usual `launch.sh --env=local`/`--env=aws` prompt runs. `project-config` doesn't own that script or know it exists at render time — `render_config.py` only ever reads `project.toml`, regardless of whether its values were typed by hand or synced from Bitwarden first. This replaces an earlier design (`secrets_mode`, a Terraform variable that made the EC2 host self-fetch from Bitwarden at boot) — retired because it only covered AWS, embedded a token into `user_data`/`terraform.tfstate`, and needed its own variable + validation + boot-time branch for what's now a plain, three-line-per-secret local script reusable by all three deploy targets.
 
 ## Table-to-File Mapping
 
 | Key(s) | Rendered into | Consumed by |
 |---|---|---|
 | `[config]` (all), `[secrets].openrouter_api_key`/`litellm_master_key`/`postgres_password` | `.env` | `docker-compose.yml` (`gateway-stack`, `key-management`) |
-| `[secrets].tailscale_auth_key`/`bws_access_token`, `[config].secrets_mode` | `infra/generated.auto.tfvars.json` | Terraform (`aws-infra`) |
-
-`[config].secrets_mode` is rendered into `infra/generated.auto.tfvars.json` only — it's Terraform's `user_data` that acts on it, nothing on the `.env`/Compose side reads it.
+| `[secrets].tailscale_auth_key` | `infra/generated.auto.tfvars.json` | Terraform (`aws-infra`) |
 
 ## Generator
 
@@ -66,9 +57,9 @@ Terraform loading: `infra/generated.auto.tfvars.json` matches Terraform's native
 
 The loop itself doesn't change shape: line-by-line scan, `[table]` header lines pass through unchanged (tracked only for display context, e.g. `secrets.openrouter_api_key`), `key = "value"` lines get the existing show-current/prompt-for-replacement/keep-on-empty treatment, blank lines and `#`-comments pass through unchanged. No TOML-writing library needed — this is the same line-based rewrite technique already proven twice in this repo (`.env`, `.tfvars`), just extended to recognize one more line shape (`[table]`). Python's `tomllib` is read-only by design (stdlib has no TOML writer); the generator (above) only ever *reads* `project.toml`, so that limitation never actually bites.
 
-With only two tables now (`[config]`, `[secrets]`), scripts scope by **key**, not by table: `launch.sh --env=local` prompts `[config].embedding_similarity_threshold` and `[secrets].openrouter_api_key`/`litellm_master_key`/`postgres_password`; `launch.sh --env=aws` prompts `[config].secrets_mode` and `[secrets].tailscale_auth_key`/`bws_access_token`. No mode-awareness in the loop itself — every owned key is always prompted, unconditionally, regardless of `secrets_mode`.
+With only two tables now (`[config]`, `[secrets]`), scripts scope by **key**, not by table: `launch.sh --env=local` prompts `[config].embedding_similarity_threshold` and `[secrets].openrouter_api_key`/`litellm_master_key`/`postgres_password`; `launch.sh --env=aws` prompts `[secrets].tailscale_auth_key`. No mode-awareness in the loop itself — every owned key is always prompted, unconditionally.
 
-**Interface**: `project_toml_prompt_keys <file> <key> [<key> ...]` — scans `<file>` line by line; for any `key = "value"` line whose bare key name (unique across both tables in this schema, no disambiguation needed) is in the given list, shows the current value and prompts for a replacement, same keep-or-replace semantics as before. All other lines (including owned-table keys not passed in the list, unrecognized keys, blanks, comments, `[table]` headers) pass through unchanged. Callers: `launch.sh --env=local` → `project_toml_prompt_keys project.toml embedding_similarity_threshold openrouter_api_key litellm_master_key postgres_password`; `launch.sh --env=aws` → `project_toml_prompt_keys project.toml secrets_mode tailscale_auth_key bws_access_token`.
+**Interface**: `project_toml_prompt_keys <file> <key> [<key> ...]` — scans `<file>` line by line; for any `key = "value"` line whose bare key name (unique across both tables in this schema, no disambiguation needed) is in the given list, shows the current value and prompts for a replacement, same keep-or-replace semantics as before. All other lines (including owned-table keys not passed in the list, unrecognized keys, blanks, comments, `[table]` headers) pass through unchanged. Callers: `launch.sh --env=local` → `project_toml_prompt_keys project.toml embedding_similarity_threshold openrouter_api_key litellm_master_key postgres_password`; `launch.sh --env=aws` → `project_toml_prompt_keys project.toml tailscale_auth_key`.
 
 ## Decisions & Alternatives
 
@@ -82,22 +73,19 @@ With only two tables now (`[config]`, `[secrets]`), scripts scope by **key**, no
 | Prompt-loop code ownership | Shared `scripts/lib/project-toml.sh`, sourced by both of `launch.sh`'s env paths | Two separate copies (as `.env`/`.tfvars` had) | Same file, same syntax now — the divergence that justified two copies (`aws-infra-design.md`'s prior decision) no longer exists. |
 | Unrecognized key/table in `project.toml` | Hard error at render time | Silently ignore/drop it | A dropped key means a service boots with a missing secret — a loud, fast failure at render time is cheaper to debug. |
 | Retiring `.env.example` / `terraform.tfvars.example` | Replaced by one `project.toml.example` | Keep all three templates alongside the new file | Multiple templates for the same secrets invites drift; one canonical example matches "single source of truth." |
-| Schema shape | Two sections, `[config]`/`[secrets]` | Six single-purpose tables (`[openrouter]`, `[litellm]`, `[postgres]`, `[embedding]`, `[tailscale]`, `[aws]`) (this doc's original draft) | Per-service tables looked tidy but didn't map to how the file is actually edited or reasoned about — the real distinction that matters is secret-vs-not (for prompting/masking) and mode-toggled-vs-not (for sourcing), not which container consumes a value. |
-| `secrets_mode` scope | Lives in `project.toml`'s `[config]` (relocated, renamed `bitwarden`/`project_toml`), but stays a **Terraform-only** behavioral toggle — `render_config.py` never branches on it | Make `render_config.py` itself `secrets_mode`-aware, fetching from `bws` at render time when in Bitwarden mode | Would require `bws_access_token` to live in the EC2 host's own `project.toml` (not just Terraform state/`user_data`) and make `bws` a live, repeatedly-callable dependency from inside the running instance instead of a one-shot boot-time fetch — rejected on exposure grounds; `bws` stays boot-time-only, same as before this leaf existed. |
-| `project.toml.example`'s shipped `secrets_mode` default | `"project_toml"` | `"bitwarden"` (AWS's historical default, back when the field only lived in `terraform.tfvars.example`) | One `project.toml.example` now serves local dev, Jarvis, and AWS — the first two have no `bws` CLI installed, so a Bitwarden default would break them out of the box. `launch.sh --env=aws` still lets an AWS operator opt into `"bitwarden"` explicitly. |
-| `launch.sh --env=local` run against a Bitwarden-provisioned host | Accepted as-is: it overwrites `.env` with `project.toml`'s values, same as any other target | Detect the pre-existing Bitwarden-sourced `.env` and guard/refuse | No signal to detect against without writing `secrets_mode`/`bws_access_token` into the host's own `project.toml` — which is the exposure this decision set out to avoid. The documented workflow (`README.md`) never routes a Bitwarden-mode operator through `launch.sh --env=local` in the first place (`cp ~/.env` is the documented step); deviating from that is an explicit, informed choice, not a silent trap. |
+| Schema shape | Two sections, `[config]`/`[secrets]` | Six single-purpose tables (`[openrouter]`, `[litellm]`, `[postgres]`, `[embedding]`, `[tailscale]`, `[aws]`) (this doc's original draft) | Per-service tables looked tidy but didn't map to how the file is actually edited or reasoned about — the real distinction that matters is secret-vs-not (for prompting/masking), not which container consumes a value. |
+| Bitwarden integration point | A separate upstream script (`bws-sync.sh`, owned by `aws-infra`) that writes `project.toml` before the usual prompt runs; `render_config.py` stays unaware Bitwarden exists | A `secrets_mode` toggle inside `project.toml`/`render_config.py` itself (this leaf's original design) | Retired: `secrets_mode` only ever covered the AWS target (Terraform-only), needed its own variable/validation/boot-time branch, and embedded a token in `user_data`/`terraform.tfstate`. A plain script that writes the same file every other consumer already reads works for all three targets and adds nothing to this leaf's own schema or generator. |
 
 ## Open Questions & Future Decisions
 
 ### Deferred
 
-1. `scripts/bws-secrets-check.sh` still reads `BWS_ACCESS_TOKEN` from its own environment variable, separate from `project.toml`'s `[aws].bws_access_token` — unifying those is left open; it's an independent vault-maintenance script, not a boot-time consumer of `project.toml` (see `aws-infra-design.md`'s existing note on the two-places-for-one-token trade-off).
-2. Non-interactive/CI rendering (e.g. a `--yes`/env-var-driven mode that skips the prompt loop entirely) is left open — no current need beyond local-dev and single-operator deploy convenience.
+1. Non-interactive/CI rendering (e.g. a `--yes`/env-var-driven mode that skips the prompt loop entirely) is left open — no current need beyond local-dev and single-operator deploy convenience.
 
 ## References
 
 - `docs/high-level-design.md`
 - `docs/intent/local-launch/local-launch-design.md` — consumes `[config].embedding_similarity_threshold` and `[secrets].openrouter_api_key`/`litellm_master_key`/`postgres_password`
-- `docs/intent/aws-infra/aws-infra-design.md` — consumes `[config].secrets_mode` and `[secrets].tailscale_auth_key`/`bws_access_token` via `launch.sh --env=aws`; owns the Bitwarden pre-clone bootstrap this leaf deliberately doesn't integrate with
+- `docs/intent/aws-infra/aws-infra-design.md` — consumes `[secrets].tailscale_auth_key` via `launch.sh --env=aws`; owns `scripts/bws-sync.sh`, the optional Bitwarden-to-`project.toml` sync step; owns the Bitwarden pre-clone bootstrap this leaf deliberately doesn't integrate with
 - `docs/intent/jarvis-deploy/jarvis-deploy-design.md` — seeds a placeholder `project.toml` on first unattended boot
 - `docs/intent/key-management/key-management-design.md` — consumes `[secrets].postgres_password`

@@ -13,7 +13,7 @@ The HLD's Non-Goal still holds: this is not an external user-account system. Key
 
 ## Postgres Service
 
-`postgres:16-alpine`, `./postgres-data:/var/lib/postgresql/data` — same bind-mount-under-the-repo persistence pattern as `redis-data` and the embedding sidecar's weights cache, so a pause/resume or stop/start doesn't lose issued keys, budgets, or spend history. `POSTGRES_PASSWORD` comes from `project-config`'s `project.toml` (`[secrets].postgres_password` — one of the three keys toggled by `secrets_mode`, see `project-config-design.md`); `POSTGRES_DB=litellm`.
+`postgres:16-alpine`, `./postgres-data:/var/lib/postgresql/data` — same bind-mount-under-the-repo persistence pattern as `redis-data` and the embedding sidecar's weights cache, so a pause/resume or stop/start doesn't lose issued keys, budgets, or spend history. `POSTGRES_PASSWORD` comes from `project-config`'s `project.toml` (`[secrets].postgres_password`, see `project-config-design.md`); `POSTGRES_DB=litellm`.
 
 No host port published — internal-only, same convention as every other backing service in this stack.
 

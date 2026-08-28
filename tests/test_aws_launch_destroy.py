@@ -14,7 +14,6 @@ DESTROY_SCRIPT = REPO_ROOT / "scripts" / "aws-destroy.sh"
 
 EXAMPLE_TOML = (
     "[config]\n"
-    'secrets_mode = "project_toml"\n'
     "embedding_similarity_threshold = 0.85\n"
     "\n"
     "[secrets]\n"
@@ -22,15 +21,12 @@ EXAMPLE_TOML = (
     'litellm_master_key = "sk-master-key-1234"\n'
     'postgres_password = "changeme"\n'
     'tailscale_auth_key = "tskey-auth-REPLACE_ME"\n'
-    'bws_access_token = ""\n'
 )
 
 
-def _run(script, tmp_path, bin_dir, stdin_text="", args=(), extra_env=None):
+def _run(script, tmp_path, bin_dir, stdin_text="", args=()):
     env = dict(os.environ)
     env["PATH"] = f"{bin_dir}:{env['PATH']}"
-    env.pop("BWS_ACCESS_TOKEN", None)  # isolate from the invoking shell's own env
-    env.update(extra_env or {})
     return subprocess.run(
         ["bash", str(script), *args],
         cwd=tmp_path,
@@ -42,8 +38,8 @@ def _run(script, tmp_path, bin_dir, stdin_text="", args=(), extra_env=None):
     )
 
 
-def _run_launch(tmp_path, bin_dir, stdin_text="", extra_env=None):
-    return _run(LAUNCH_SCRIPT, tmp_path, bin_dir, stdin_text, args=("--env=aws",), extra_env=extra_env)
+def _run_launch(tmp_path, bin_dir, stdin_text=""):
+    return _run(LAUNCH_SCRIPT, tmp_path, bin_dir, stdin_text, args=("--env=aws",))
 
 
 def _write_example(tmp_path):
@@ -59,7 +55,7 @@ def test_launch_copies_project_toml_example_when_missing(tmp_path, fake_bin, cal
     add("terraform", f'echo "terraform $*" >> {call_log}')
     _write_example(tmp_path)
 
-    result = _run_launch(tmp_path, bin_dir, "\n\n\n")  # keep all three owned keys
+    result = _run_launch(tmp_path, bin_dir, "\n")  # keep the one owned key
 
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "project.toml").read_text() == EXAMPLE_TOML
@@ -71,7 +67,7 @@ def test_launch_only_prompts_owned_keys_not_openrouter_or_litellm(tmp_path, fake
     add("terraform", f'echo "terraform $*" >> {call_log}')
     _write_example(tmp_path)
 
-    result = _run_launch(tmp_path, bin_dir, "\n\n\n")
+    result = _run_launch(tmp_path, bin_dir, "\n")
 
     assert result.returncode == 0, result.stderr
     assert "openrouter_api_key" not in result.stdout
@@ -87,43 +83,12 @@ def test_launch_prompt_shows_current_value_and_replaces_it(tmp_path, fake_bin, c
         EXAMPLE_TOML.replace("tskey-auth-REPLACE_ME", "old-key")
     )
 
-    result = _run_launch(tmp_path, bin_dir, "\nnew-key\n\n")  # keep, replace, keep
+    result = _run_launch(tmp_path, bin_dir, "new-key\n")  # replace
 
     assert result.returncode == 0, result.stderr
     assert "tailscale_auth_key" in result.stdout
     assert "old-key" in result.stdout
     assert 'tailscale_auth_key = "new-key"' in (tmp_path / "project.toml").read_text()
-
-
-# @spec INFRA-030
-def test_launch_prefills_bws_token_from_env_when_placeholder(tmp_path, fake_bin, call_log):
-    bin_dir, add = fake_bin
-    add("terraform", f'echo "terraform $*" >> {call_log}')
-    _write_example(tmp_path)
-
-    result = _run_launch(
-        tmp_path, bin_dir, "\n\n\n", extra_env={"BWS_ACCESS_TOKEN": "0.env-token-value"}
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert 'bws_access_token = "0.env-token-value"' in (tmp_path / "project.toml").read_text()
-
-
-# @spec INFRA-030
-def test_launch_does_not_overwrite_existing_bws_token_with_env(tmp_path, fake_bin, call_log):
-    bin_dir, add = fake_bin
-    add("terraform", f'echo "terraform $*" >> {call_log}')
-    _write_example(tmp_path)
-    (tmp_path / "project.toml").write_text(
-        EXAMPLE_TOML.replace('bws_access_token = ""', 'bws_access_token = "real-saved-token"')
-    )
-
-    result = _run_launch(
-        tmp_path, bin_dir, "\n\n\n", extra_env={"BWS_ACCESS_TOKEN": "0.env-token-value"}
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert 'bws_access_token = "real-saved-token"' in (tmp_path / "project.toml").read_text()
 
 
 # @spec INFRA-029
@@ -132,7 +97,7 @@ def test_launch_renders_tfvars_json_before_terraform(tmp_path, fake_bin, call_lo
     add("terraform", f'echo "terraform $*" >> {call_log}')
     _write_example(tmp_path)
 
-    result = _run_launch(tmp_path, bin_dir, "\n\n\n")
+    result = _run_launch(tmp_path, bin_dir, "\n")
 
     assert result.returncode == 0, result.stderr
     import json
@@ -151,7 +116,7 @@ def test_launch_runs_terraform_init_then_apply_without_var_file_or_auto_approve(
     add("terraform", f'echo "terraform $*" >> {call_log}')
     _write_example(tmp_path)
 
-    result = _run_launch(tmp_path, bin_dir, "\n\n\n")
+    result = _run_launch(tmp_path, bin_dir, "\n")
 
     assert result.returncode == 0, result.stderr
     calls = call_log.read_text()

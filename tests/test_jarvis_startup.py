@@ -160,7 +160,6 @@ def test_does_not_overwrite_existing_project_toml(tmp_path, fake_bin, call_log):
     (workspace / ".git").mkdir()
     real_toml = (
         "[config]\n"
-        'secrets_mode = "project_toml"\n'
         "embedding_similarity_threshold = 0.85\n"
         "\n"
         "[secrets]\n"
@@ -168,7 +167,6 @@ def test_does_not_overwrite_existing_project_toml(tmp_path, fake_bin, call_log):
         'litellm_master_key = "sk-real"\n'
         'postgres_password = "pg-real"\n'
         'tailscale_auth_key = "tskey-real"\n'
-        'bws_access_token = ""\n'
     )
     (workspace / "project.toml").write_text(real_toml)
 

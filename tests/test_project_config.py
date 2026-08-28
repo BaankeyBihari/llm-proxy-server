@@ -16,10 +16,9 @@ EXAMPLE = REPO_ROOT / "project.toml.example"
 _STDLIB_ALLOWLIST = {"tomllib", "json", "sys", "os", "pathlib", "subprocess", "argparse"}
 
 
-def _write_project_toml(path, secrets_mode="project_toml"):
+def _write_project_toml(path):
     path.write_text(
         "[config]\n"
-        f'secrets_mode = "{secrets_mode}"\n'
         "embedding_similarity_threshold = 0.85\n"
         "\n"
         "[secrets]\n"
@@ -27,7 +26,6 @@ def _write_project_toml(path, secrets_mode="project_toml"):
         'litellm_master_key = "sk-real"\n'
         'postgres_password = "pg-real"\n'
         'tailscale_auth_key = "tskey-real"\n'
-        'bws_access_token = "bws-real"\n'
     )
 
 
@@ -48,14 +46,12 @@ def _run_render(tmp_path, extra_path=None):
 # @spec CONF-001
 def test_example_has_config_and_secrets_tables_with_expected_defaults():
     data = tomllib.loads(EXAMPLE.read_text())
-    assert data["config"]["secrets_mode"] == "project_toml"
     assert data["config"]["embedding_similarity_threshold"] == 0.85
     for key in (
         "openrouter_api_key",
         "litellm_master_key",
         "postgres_password",
         "tailscale_auth_key",
-        "bws_access_token",
     ):
         assert key in data["secrets"]
 
@@ -97,15 +93,14 @@ def test_render_writes_tfvars_json_with_expected_keys(tmp_path):
 
     tfvars = json.loads((tmp_path / "infra" / "generated.auto.tfvars.json").read_text())
     assert tfvars["tailscale_auth_key"] == "tskey-real"
-    assert tfvars["bws_access_token"] == "bws-real"
-    assert tfvars["secrets_mode"] == "project_toml"
+    assert set(tfvars) == {"tailscale_auth_key"}
 
 
 # @spec CONF-005
-def test_render_never_invokes_bws_even_in_bitwarden_mode(tmp_path, fake_bin, call_log):
+def test_render_never_invokes_bws(tmp_path, fake_bin, call_log):
     bin_dir, add = fake_bin
     add("bws", f'echo "bws $*" >> {call_log}\nexit 1')
-    _write_project_toml(tmp_path / "project.toml", secrets_mode="bitwarden")
+    _write_project_toml(tmp_path / "project.toml")
 
     result = _run_render(tmp_path, extra_path=bin_dir)
 
@@ -185,7 +180,7 @@ def test_prompt_loop_keeps_current_value_on_empty_response(tmp_path):
 def test_prompt_loop_preserves_table_headers_and_comments(tmp_path):
     toml_path = tmp_path / "project.toml"
     toml_path.write_text(
-        "# a comment\n[config]\nsecrets_mode = \"project_toml\"\n\n[secrets]\n"
+        "# a comment\n[config]\nembedding_similarity_threshold = 0.85\n\n[secrets]\n"
         'openrouter_api_key = "or-real"\n'
     )
 

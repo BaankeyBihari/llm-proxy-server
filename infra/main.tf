@@ -7,8 +7,7 @@
 #
 # @spec INFRA-001, INFRA-002, INFRA-003, INFRA-004, INFRA-005, INFRA-006,
 # @spec INFRA-007, INFRA-008, INFRA-009, INFRA-010, INFRA-011, INFRA-012,
-# @spec INFRA-013, INFRA-014, INFRA-015, INFRA-016, INFRA-017, INFRA-018,
-# @spec INFRA-019, INFRA-020, INFRA-021
+# @spec INFRA-013, INFRA-014, INFRA-015, INFRA-016, INFRA-017
 
 terraform {
   required_providers {
@@ -33,24 +32,6 @@ variable "tailscale_auth_key" {
   description = "Tailscale reusable pre-auth key (Admin Panel > Settings > Keys). Used once, at first boot."
   type        = string
   sensitive   = true
-}
-
-variable "secrets_mode" {
-  description = "How the host obtains OPENROUTER_API_KEY/LITELLM_MASTER_KEY/POSTGRES_PASSWORD at boot: \"bitwarden\" (auto-fetch via Bitwarden Secrets Manager) or \"project_toml\" (manual transfer via ./scripts/launch.sh --env=local, as documented in aws-infra-design.md)."
-  type        = string
-  default     = "project_toml"
-
-  validation {
-    condition     = contains(["bitwarden", "project_toml"], var.secrets_mode)
-    error_message = "secrets_mode must be \"bitwarden\" or \"project_toml\"."
-  }
-}
-
-variable "bws_access_token" {
-  description = "Bitwarden Secrets Manager machine account access token. Required when secrets_mode = \"bitwarden\"."
-  type        = string
-  sensitive   = true
-  default     = ""
 }
 
 provider "aws" {
@@ -156,31 +137,13 @@ resource "aws_instance" "litellm_server" {
               # rationale as docs/intent/aws-deploy/aws-deploy-design.md.
               tailscale up --authkey=${var.tailscale_auth_key} --statedir=/home/ubuntu/tailscale-state --hostname=cloud-litellm
 
-              # SSM agent, so the remaining manual step (git clone, and for
-              # secrets_mode = "project_toml", ./scripts/launch.sh --env=local) can
-              # run over Session Manager instead of SSH (security group has no
-              # ingress).
+              # SSM agent, so the remaining manual step (git clone, then
+              # ./scripts/bws-sync.sh + ./scripts/launch.sh --env=local) can
+              # run over Session Manager instead of SSH (security group has
+              # no ingress).
               snap install amazon-ssm-agent --classic
               systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
               systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
-
-              # secrets_mode = "bitwarden": fetch OPENROUTER_API_KEY /
-              # LITELLM_MASTER_KEY / POSTGRES_PASSWORD now, to a fixed host
-              # path rather than into the (not-yet-cloned) repo, so this
-              # doesn't have to wait on the manual clone step above. This is
-              # the only place `bws` is ever invoked on this target —
-              # render_config.py never becomes Bitwarden-aware, see
-              # project-config-design.md. secrets_mode = "project_toml": do
-              # nothing here — the operator runs ./scripts/launch.sh --env=local
-              # manually instead, as before this variable existed.
-              if [ "${var.secrets_mode}" = "bitwarden" ]; then
-                curl -fsSLO https://github.com/bitwarden/sdk-sm/releases/download/bws-v0.3.1/bws-aarch64-unknown-linux-gnu-0.3.1.zip
-                apt-get install -y unzip
-                unzip -o bws-aarch64-unknown-linux-gnu-0.3.1.zip -d /usr/local/bin
-                chmod +x /usr/local/bin/bws
-                BWS_ACCESS_TOKEN="${var.bws_access_token}" bws secret list --output env > /home/ubuntu/.env
-                chown ubuntu:ubuntu /home/ubuntu/.env
-              fi
               EOF
 
   tags = {

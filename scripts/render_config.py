@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Reads project.toml and renders .env (for docker compose) and
 infra/generated.auto.tfvars.json (for Terraform) — project-config's
-table-to-file mapping. Unconditional: never branches on secrets_mode, never
-shells out to bws — see project-config-design.md's secrets_mode decision row
-for why that's deliberate. Stdlib-only, runs under any system python3 >=3.11
-without needing `uv sync` first (matters for jarvis-startup.sh's boot).
+table-to-file mapping. Unconditional: never shells out to bws itself —
+scripts/bws-sync.sh is the only thing that talks to Bitwarden, and it writes
+into project.toml, not around this generator. Stdlib-only, runs under any
+system python3 >=3.11 without needing `uv sync` first (matters for
+jarvis-startup.sh's boot).
 @spec CONF-002, CONF-003, CONF-004, CONF-005, CONF-007
 """
 import json
@@ -13,13 +14,12 @@ import tomllib
 from pathlib import Path
 
 SCHEMA = {
-    "config": {"secrets_mode", "embedding_similarity_threshold"},
+    "config": {"embedding_similarity_threshold"},
     "secrets": {
         "openrouter_api_key",
         "litellm_master_key",
         "postgres_password",
         "tailscale_auth_key",
-        "bws_access_token",
     },
 }
 
@@ -48,8 +48,6 @@ def main():
 
     tfvars = {
         "tailscale_auth_key": secrets["tailscale_auth_key"],
-        "bws_access_token": secrets["bws_access_token"],
-        "secrets_mode": config["secrets_mode"],
     }
     infra_dir = Path("infra")
     infra_dir.mkdir(exist_ok=True)

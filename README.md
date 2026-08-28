@@ -22,6 +22,8 @@ uv run pytest     # runs the test suite
 
 Copies `project.toml.example` → `project.toml` if missing, prompts per key (OpenRouter/LiteLLM/Postgres secrets and the embedding similarity threshold) to keep or replace it, renders `.env` from it, then runs `docker compose up -d` and prints a ready-to-run `curl` example with your real `LITELLM_MASTER_KEY` already substituted in. Aborts instead of prompting if the stack's already running — run `./scripts/local-stop.sh` first if you want a `project.toml` edit to take effect.
 
+Have secrets in Bitwarden Secrets Manager already? `BWS_ACCESS_TOKEN=<token> ./scripts/bws-sync.sh` pulls them into `project.toml` first — the prompt above then just shows them as current, hit Enter to accept.
+
 To stop: `./scripts/local-stop.sh` — brings the stack down gracefully, or warns (doesn't error) if it's already down.
 
 ## Virtual keys and the Admin UI
@@ -44,7 +46,7 @@ Jarvis Labs pods are paused (not terminated) between sessions, so the whole boot
 2. Open `scripts/jarvis-startup.sh` and, at the top, set real values for `TAILSCALE_AUTHKEY`, `GIT_REPO_URL`, and (if you don't want the defaults) `WORKSPACE` / `TAILSCALE_HOSTNAME` — either edit the `:-default` values directly or export them above the script body.
 3. Paste the resulting script into the pod's **Startup Script** field. It runs on every resume, not just first boot.
 4. First resume: it pins Tailscale's state under `$WORKSPACE/tailscale-state` (survives pause — this is what stops the pod from re-registering as a new node every time), clones the repo, waits for Docker, and seeds a placeholder `project.toml` (rendered to `.env` via `scripts/render_config.py`).
-5. SSH in once. The stack is already running on placeholder secrets (step 4 started it) — `launch.sh --env=local` aborts rather than edit `project.toml` under a live container, so stop it first: `./scripts/local-stop.sh`, then `./scripts/launch.sh --env=local` to set the real `openrouter_api_key` / `litellm_master_key` / `postgres_password` values and bring it back up.
+5. SSH in once. The stack is already running on placeholder secrets (step 4 started it) — `launch.sh --env=local` aborts rather than edit `project.toml` under a live container, so stop it first: `./scripts/local-stop.sh`. Optionally pull real secrets from Bitwarden (`BWS_ACCESS_TOKEN=<token> ./scripts/bws-sync.sh`), then `./scripts/launch.sh --env=local` to set (or confirm) the real `openrouter_api_key` / `litellm_master_key` / `postgres_password` values and bring it back up.
 6. From your laptop (Tailscale connected): `http://<TAILSCALE_HOSTNAME>:4000`.
 
 ## Deploying to AWS EC2
@@ -59,7 +61,7 @@ The EC2 instance, Elastic IP, IAM roles, and ignition Lambda are provisioned via
 ```bash
 ./scripts/launch.sh --env=aws
 ```
-Copies `project.toml.example` → `project.toml` if missing, prompts per key to keep or replace it (shared prompt loop with the local path, `scripts/lib/project-toml.sh`), renders `infra/generated.auto.tfvars.json` via `scripts/render_config.py`, then runs `terraform init`/`terraform apply` — prints `ec2_public_ip` and `ignition_switch_url`. Prompted keys: `tailscale_auth_key` (from step 0), `secrets_mode` (`project_toml` default, or `bitwarden` — see below), and `bws_access_token` (Bitwarden Secrets Manager machine token, required in `bitwarden` mode — see `docs/gemini/bitwarden.md`; pre-filled from `$BWS_ACCESS_TOKEN` if set and `project.toml`'s value is still the placeholder). The instance connects to Tailscale automatically on first boot — no manual `tailscale up` needed.
+Copies `project.toml.example` → `project.toml` if missing, prompts per key to keep or replace it (shared prompt loop with the local path, `scripts/lib/project-toml.sh`), renders `infra/generated.auto.tfvars.json` via `scripts/render_config.py`, then runs `terraform init`/`terraform apply` — prints `ec2_public_ip` and `ignition_switch_url`. Prompted key: `tailscale_auth_key` (from step 0). The instance connects to Tailscale automatically on first boot — no manual `tailscale up` needed.
 
 To tear everything down (back to $0.00): `./scripts/aws-destroy.sh`. Both scripts keep Terraform's own plan-then-confirm prompt (no `-auto-approve`). If local Terraform state is lost, `cloud-nuke` is a documented fallback — see `docs/gemini/terraform-and-nuke-guide.md`.
 
@@ -75,8 +77,11 @@ Generate a GitHub deploy key (`ssh-keygen`), add the public half to the repo, th
 ```bash
 cd /home/ubuntu/litellm-proxy
 ```
-- `secrets_mode = "bitwarden"`: `user_data` already fetched `OPENROUTER_API_KEY`/`LITELLM_MASTER_KEY`/`POSTGRES_PASSWORD` to `/home/ubuntu/.env` — just `cp ~/.env .env`. This is the *only* place `bws` runs on this target; don't run `launch.sh --env=local` afterward, it doesn't know about Bitwarden and will overwrite `.env` with `project.toml`'s placeholder values.
-- `secrets_mode = "project_toml"` (default): run `./scripts/launch.sh --env=local` to fill in `openrouter_api_key` / `litellm_master_key` / `postgres_password` instead.
+Pulling secrets from Bitwarden here is optional — skip straight to `launch.sh --env=local` and type them in if you don't use Bitwarden:
+```bash
+BWS_ACCESS_TOKEN=<token> ./scripts/bws-sync.sh   # optional: pull secrets from Bitwarden into project.toml
+./scripts/launch.sh --env=local                  # fill in (or confirm) openrouter_api_key / litellm_master_key / postgres_password, bring the stack up
+```
 
 ```bash
 crontab scripts/aws-idle-check.cron   # hourly idle check → poweroff after 4h silence
@@ -107,6 +112,7 @@ Allowed sizes: `t4g.small`, `t4g.medium`, `t3.small`, `t3.medium` — anything e
 | `infra/main.tf` | Terraform: provisions the EC2 instance, EIP, IAM roles, and ignition Lambda |
 | `scripts/aws-destroy.sh` | `terraform destroy` |
 | `scripts/bws-secrets-check.sh` | Reviews/updates secrets in the Bitwarden vault directly, independent of Terraform |
+| `scripts/bws-sync.sh` | Optional: pulls secrets from the Bitwarden vault into `project.toml`, ahead of `launch.sh` — same command for all three deploy targets |
 | `docs/high-level-design.md`, `docs/intent/` | Design intent (HLD, per-component LLDs, EARS specs) |
 | `docs/gemini/` | Original research this project was built from |
 

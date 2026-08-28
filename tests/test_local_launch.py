@@ -14,7 +14,6 @@ SCRIPT = REPO_ROOT / "scripts" / "launch.sh"
 
 EXAMPLE_TOML = (
     "[config]\n"
-    'secrets_mode = "project_toml"\n'
     "embedding_similarity_threshold = 0.85\n"
     "\n"
     "[secrets]\n"
@@ -22,7 +21,6 @@ EXAMPLE_TOML = (
     'litellm_master_key = "sk-master-key-1234"\n'
     'postgres_password = "changeme"\n'
     'tailscale_auth_key = "tskey-auth-REPLACE_ME"\n'
-    'bws_access_token = ""\n'
 )
 
 
@@ -83,7 +81,7 @@ def test_does_not_reset_existing_project_toml_to_example_values(tmp_path, fake_b
 
 
 # @spec LOCAL-003
-def test_only_prompts_owned_keys_not_tailscale_or_secrets_mode(tmp_path, fake_bin, call_log):
+def test_only_prompts_owned_keys_not_tailscale(tmp_path, fake_bin, call_log):
     bin_dir, add = fake_bin
     _fake_docker(add, call_log)
     (tmp_path / "project.toml.example").write_text(EXAMPLE_TOML)
@@ -92,7 +90,6 @@ def test_only_prompts_owned_keys_not_tailscale_or_secrets_mode(tmp_path, fake_bi
 
     assert result.returncode == 0, result.stderr
     assert "tailscale_auth_key" not in result.stdout
-    assert "secrets_mode" not in result.stdout
 
 
 # @spec LOCAL-004
