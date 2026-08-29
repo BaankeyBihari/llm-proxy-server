@@ -48,7 +48,6 @@ local_launch() {
   fi
 
   project_toml_prompt_keys "$TOML_FILE" \
-    embedding_similarity_threshold \
     openrouter_api_key \
     litellm_master_key \
     postgres_password

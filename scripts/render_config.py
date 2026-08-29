@@ -14,7 +14,6 @@ import tomllib
 from pathlib import Path
 
 SCHEMA = {
-    "config": {"embedding_similarity_threshold"},
     "secrets": {
         "openrouter_api_key",
         "litellm_master_key",
@@ -35,14 +34,12 @@ def main():
             if key not in SCHEMA[table]:
                 sys.exit(f"render_config.py: unrecognized key {table}.{key} in project.toml")
 
-    config = data.get("config", {})
     secrets = data.get("secrets", {})
 
     env_lines = [
         f"OPENROUTER_API_KEY={secrets['openrouter_api_key']}",
         f"LITELLM_MASTER_KEY={secrets['litellm_master_key']}",
         f"POSTGRES_PASSWORD={secrets['postgres_password']}",
-        f"EMBEDDING_SIMILARITY_THRESHOLD={config['embedding_similarity_threshold']}",
     ]
     Path(".env").write_text("\n".join(env_lines) + "\n")
 

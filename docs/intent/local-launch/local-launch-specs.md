@@ -8,7 +8,7 @@
 
 - [x] **LOCAL-001**: If `project.toml` does not exist, then the script shall copy `project.toml.example` to `project.toml` before proceeding.
 - [x] **LOCAL-002**: While `project.toml` already exists, the script shall leave it unmodified at the copy step and proceed directly to prompting.
-- [x] **LOCAL-003**: The script shall use the shared prompt loop (`CONF-009`) scoped to `[config].embedding_similarity_threshold` and `[secrets].openrouter_api_key`/`litellm_master_key`/`postgres_password`.
+- [x] **LOCAL-003**: The script shall use the shared prompt loop (`CONF-009`) scoped to `[secrets].openrouter_api_key`/`litellm_master_key`/`postgres_password`.
 - [x] **LOCAL-004**: For each owned key, in file order, the script shall display the current value and prompt for a replacement, unconditionally.
 - [x] **LOCAL-005**: When the user enters a non-empty replacement for a key, the script shall write that value; when the user submits an empty response, the script shall retain the current value.
 - [x] **LOCAL-006**: The script shall write the result back to `project.toml`, preserving the original line order and any comment/blank/table lines unchanged.

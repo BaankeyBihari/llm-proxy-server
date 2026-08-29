@@ -13,12 +13,9 @@ Secrets and config were scattered across three checked-in templates in three for
 
 ## Schema
 
-Two sections, not six single-purpose tables — `[config]` for non-secret settings, `[secrets]` for everything sensitive:
+One `[secrets]` table — everything in `project.toml` is sensitive:
 
 ```toml
-[config]
-embedding_similarity_threshold = 0.85
-
 [secrets]
 openrouter_api_key = "your_openrouter_key_here"
 litellm_master_key = "sk-master-key-1234"
@@ -28,7 +25,7 @@ tailscale_auth_key = "tskey-auth-REPLACE_ME"
 
 Checked in as `project.toml.example`; `project.toml` itself is gitignored, same as `.env`/`terraform.tfvars` were.
 
-`[config]` and `[secrets]` are both always read straight from `project.toml`, unconditionally, by `render_config.py` — a straight read-and-split, no branching on any value inside `project.toml`.
+`[secrets]` is always read straight from `project.toml`, unconditionally, by `render_config.py` — a straight read-and-split, no branching on any value inside `project.toml`.
 
 ## Bitwarden as a Local Secrets Source
 
@@ -38,7 +35,7 @@ Checked in as `project.toml.example`; `project.toml` itself is gitignored, same 
 
 | Key(s) | Rendered into | Consumed by |
 |---|---|---|
-| `[config]` (all), `[secrets].openrouter_api_key`/`litellm_master_key`/`postgres_password` | `.env` | `docker-compose.yml` (`gateway-stack`, `key-management`) |
+| `[secrets].openrouter_api_key`/`litellm_master_key`/`postgres_password` | `.env` | `docker-compose.yml` (`gateway-stack`, `key-management`) |
 | `[secrets].tailscale_auth_key` | `infra/generated.auto.tfvars.json` | Terraform (`aws-infra`) |
 
 ## Generator
@@ -57,9 +54,9 @@ Terraform loading: `infra/generated.auto.tfvars.json` matches Terraform's native
 
 The loop itself doesn't change shape: line-by-line scan, `[table]` header lines pass through unchanged (tracked only for display context, e.g. `secrets.openrouter_api_key`), `key = "value"` lines get the existing show-current/prompt-for-replacement/keep-on-empty treatment, blank lines and `#`-comments pass through unchanged. No TOML-writing library needed — this is the same line-based rewrite technique already proven twice in this repo (`.env`, `.tfvars`), just extended to recognize one more line shape (`[table]`). Python's `tomllib` is read-only by design (stdlib has no TOML writer); the generator (above) only ever *reads* `project.toml`, so that limitation never actually bites.
 
-With only two tables now (`[config]`, `[secrets]`), scripts scope by **key**, not by table: `launch.sh --env=local` prompts `[config].embedding_similarity_threshold` and `[secrets].openrouter_api_key`/`litellm_master_key`/`postgres_password`; `launch.sh --env=aws` prompts `[secrets].tailscale_auth_key`. No mode-awareness in the loop itself — every owned key is always prompted, unconditionally.
+With only one table now (`[secrets]`), scripts scope by **key**, not by table: `launch.sh --env=local` prompts `[secrets].openrouter_api_key`/`litellm_master_key`/`postgres_password`; `launch.sh --env=aws` prompts `[secrets].tailscale_auth_key`. No mode-awareness in the loop itself — every owned key is always prompted, unconditionally.
 
-**Interface**: `project_toml_prompt_keys <file> <key> [<key> ...]` — scans `<file>` line by line; for any `key = "value"` line whose bare key name (unique across both tables in this schema, no disambiguation needed) is in the given list, shows the current value and prompts for a replacement, same keep-or-replace semantics as before. All other lines (including owned-table keys not passed in the list, unrecognized keys, blanks, comments, `[table]` headers) pass through unchanged. Callers: `launch.sh --env=local` → `project_toml_prompt_keys project.toml embedding_similarity_threshold openrouter_api_key litellm_master_key postgres_password`; `launch.sh --env=aws` → `project_toml_prompt_keys project.toml tailscale_auth_key`.
+**Interface**: `project_toml_prompt_keys <file> <key> [<key> ...]` — scans `<file>` line by line; for any `key = "value"` line whose bare key name (unique across the schema, no disambiguation needed) is in the given list, shows the current value and prompts for a replacement, same keep-or-replace semantics as before. All other lines (including owned-table keys not passed in the list, unrecognized keys, blanks, comments, `[table]` headers) pass through unchanged. Callers: `launch.sh --env=local` → `project_toml_prompt_keys project.toml openrouter_api_key litellm_master_key postgres_password`; `launch.sh --env=aws` → `project_toml_prompt_keys project.toml tailscale_auth_key`.
 
 ## Decisions & Alternatives
 
@@ -73,7 +70,7 @@ With only two tables now (`[config]`, `[secrets]`), scripts scope by **key**, no
 | Prompt-loop code ownership | Shared `scripts/lib/project-toml.sh`, sourced by both of `launch.sh`'s env paths | Two separate copies (as `.env`/`.tfvars` had) | Same file, same syntax now — the divergence that justified two copies (`aws-infra-design.md`'s prior decision) no longer exists. |
 | Unrecognized key/table in `project.toml` | Hard error at render time | Silently ignore/drop it | A dropped key means a service boots with a missing secret — a loud, fast failure at render time is cheaper to debug. |
 | Retiring `.env.example` / `terraform.tfvars.example` | Replaced by one `project.toml.example` | Keep all three templates alongside the new file | Multiple templates for the same secrets invites drift; one canonical example matches "single source of truth." |
-| Schema shape | Two sections, `[config]`/`[secrets]` | Six single-purpose tables (`[openrouter]`, `[litellm]`, `[postgres]`, `[embedding]`, `[tailscale]`, `[aws]`) (this doc's original draft) | Per-service tables looked tidy but didn't map to how the file is actually edited or reasoned about — the real distinction that matters is secret-vs-not (for prompting/masking), not which container consumes a value. |
+| Schema shape | Single `[secrets]` table | Two sections, `[config]`/`[secrets]` (this leaf's prior design); six single-purpose tables (`[openrouter]`, `[litellm]`, `[postgres]`, `[embedding]`, `[tailscale]`, `[aws]`) (this doc's original draft) | `embedding_similarity_threshold` was the only key `[config]` ever held, and it moved to a literal in `gateway-stack`'s `config.yaml` (see that leaf's GATE-011) once its `os.environ/`-substitution path proved incompatible with LiteLLM's redis-semantic cache backend — a str reaches unguarded float arithmetic and crashes on boot. With nothing left in `[config]`, the secret-vs-not distinction collapses to one table. Per-service tables were rejected earlier for the same reason: didn't map to how the file is actually edited. |
 | Bitwarden integration point | A separate upstream script (`bws-sync.sh`, owned by `aws-infra`) that writes `project.toml` before the usual prompt runs; `render_config.py` stays unaware Bitwarden exists | A `secrets_mode` toggle inside `project.toml`/`render_config.py` itself (this leaf's original design) | Retired: `secrets_mode` only ever covered the AWS target (Terraform-only), needed its own variable/validation/boot-time branch, and embedded a token in `user_data`/`terraform.tfstate`. A plain script that writes the same file every other consumer already reads works for all three targets and adds nothing to this leaf's own schema or generator. |
 
 ## Open Questions & Future Decisions
@@ -85,7 +82,7 @@ With only two tables now (`[config]`, `[secrets]`), scripts scope by **key**, no
 ## References
 
 - `docs/high-level-design.md`
-- `docs/intent/local-launch/local-launch-design.md` — consumes `[config].embedding_similarity_threshold` and `[secrets].openrouter_api_key`/`litellm_master_key`/`postgres_password`
+- `docs/intent/local-launch/local-launch-design.md` — consumes `[secrets].openrouter_api_key`/`litellm_master_key`/`postgres_password`
 - `docs/intent/aws-infra/aws-infra-design.md` — consumes `[secrets].tailscale_auth_key` via `launch.sh --env=aws`; owns `scripts/bws-sync.sh`, the optional Bitwarden-to-`project.toml` sync step; owns the Bitwarden pre-clone bootstrap this leaf deliberately doesn't integrate with
 - `docs/intent/jarvis-deploy/jarvis-deploy-design.md` — seeds a placeholder `project.toml` on first unattended boot
 - `docs/intent/key-management/key-management-design.md` — consumes `[secrets].postgres_password`
