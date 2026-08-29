@@ -17,12 +17,14 @@
 - [x] **GATE-007**: The system shall enable Redis-backed semantic response caching (`cache_params.type: redis-semantic`) with a TTL of 604800 seconds (7 days).
 - [x] **GATE-008**: The Redis service shall persist snapshots to a host-mounted volume (`./redis-data:/data`) with `--save 60 1`, so cache state survives container restart.
 - [x] **GATE-009**: The Redis service shall cap memory at 1536mb and evict under the `allkeys-lru` policy when the cap is reached.
-- [x] **GATE-011**: The semantic cache's `similarity_threshold` shall default to `0.85`, overridable via the `EMBEDDING_SIMILARITY_THRESHOLD` environment variable.
+- [x] **GATE-011**: The semantic cache's `similarity_threshold` shall be set to the literal `0.85` in `config.yaml`, not sourced from an `os.environ/` substitution — LiteLLM's `os.environ/` mechanism always resolves to a string, and the redis-semantic cache backend performs unguarded float arithmetic on this value at boot, crashing on any non-float type.
+- [x] **GATE-015**: The `litellm` service shall set `REDIS_PASSWORD` (empty, since `redis` has no auth configured) in `docker-compose.yml`, so LiteLLM's redis-semantic cache backend — which requires this env var to exist regardless of whether Redis auth is enabled — doesn't crash on boot with a missing-configuration error.
 
 ## Embedding Sidecar
 
-- [x] **GATE-012**: The `docker-compose.yml` shall declare exactly one `embedding` service using the `michaelfeil/infinity` image, serving the `BAAI/bge-small-en-v1.5` model, with no host port published.
-- [x] **GATE-013**: The `embedding` service shall mount `./embedding-cache:/data` and set `HF_HOME=/data`, so downloaded model weights persist across container restart.
+- [x] **GATE-012**: The `docker-compose.yml` shall declare exactly one `embedding` service using the `ollama/ollama:latest` image, serving the `nomic-embed-text` model, with no host port published.
+- [x] **GATE-013**: The `embedding` service shall mount `./embedding-cache:/root/.ollama`, so downloaded model weights persist across container restart.
+- [x] **GATE-014**: The `embedding` service shall set `OLLAMA_HOST=0.0.0.0`, so the `litellm` service can reach it over the compose network.
 
 Fail-open behavior on a mid-request sidecar outage (design doc's "Embedding Sidecar" section) is deliberately not a spec here — it's LiteLLM's own cache-client behavior, not code this repo writes or a config value it sets; nothing in `config.yaml`/`docker-compose.yml` can assert it. Same class as the unspecced "Cache-key ordering assumption" paragraph already in this doc.
 

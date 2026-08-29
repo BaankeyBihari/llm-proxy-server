@@ -98,27 +98,34 @@ def test_redis_service_caps_memory_with_lru_eviction(compose):
 
 
 # @spec GATE-011
-def test_similarity_threshold_defaults_to_0_85_overridable_via_env(config, compose):
-    assert config["litellm_settings"]["cache_params"]["similarity_threshold"] == (
-        "os.environ/EMBEDDING_SIMILARITY_THRESHOLD"
-    )
+def test_similarity_threshold_defaults_to_0_85(config):
+    assert config["litellm_settings"]["cache_params"]["similarity_threshold"] == 0.85
+
+
+# @spec GATE-015
+def test_litellm_sets_empty_redis_password(compose):
     litellm_env = compose["services"]["litellm"]["environment"]
-    assert "EMBEDDING_SIMILARITY_THRESHOLD=${EMBEDDING_SIMILARITY_THRESHOLD:-0.85}" in litellm_env
+    assert "REDIS_PASSWORD=" in litellm_env
 
 
 # @spec GATE-012
-def test_embedding_service_uses_infinity_image_serving_bge_small_no_host_port(compose):
+def test_embedding_service_uses_ollama_image_serving_nomic_embed_no_host_port(compose):
     embedding = compose["services"]["embedding"]
-    assert embedding["image"] == "michaelfeil/infinity"
-    assert "BAAI/bge-small-en-v1.5" in " ".join(embedding.get("command", []))
+    assert embedding["image"] == "ollama/ollama:latest"
+    assert "nomic-embed-text" in embedding.get("entrypoint", "")
     assert "ports" not in embedding
 
 
 # @spec GATE-013
 def test_embedding_service_persists_weights_cache(compose):
     embedding = compose["services"]["embedding"]
-    assert "./embedding-cache:/data" in embedding["volumes"]
-    assert "HF_HOME=/data" in embedding["environment"]
+    assert "./embedding-cache:/root/.ollama" in embedding["volumes"]
+
+
+# @spec GATE-014
+def test_embedding_service_binds_all_interfaces(compose):
+    embedding = compose["services"]["embedding"]
+    assert "OLLAMA_HOST=0.0.0.0" in embedding["environment"]
 
 
 # @spec GATE-010

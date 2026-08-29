@@ -13,22 +13,25 @@ services:
     image: python:3.12-slim
     container_name: headroom-proxy
     restart: always
+    # Pinned to a specific version to prevent PyPI drift on restart
     command: >
-      sh -c "pip install headroom-ai[proxy] && headroom proxy --host 0.0.0.0 --port 8787 --mode cache"
+      sh -c "pip install headroom-ai[proxy]==0.37.0 && headroom proxy --host 0.0.0.0 --port 8787 --mode cache"
     environment:
       - HEADROOM_TELEMETRY=off
       - HEADROOM_COMPRESS_USER_MESSAGES=1
 
-  # @spec GATE-012, GATE-013
+  # @spec GATE-012, GATE-013, GATE-014
   embedding:
-    image: michaelfeil/infinity
+    image: ollama/ollama:latest
     container_name: embedding-sidecar
     restart: always
-    command: [ "v2", "--model-id", "BAAI/bge-small-en-v1.5", "--port", "7997" ]
     environment:
-      - HF_HOME=/data
+      - OLLAMA_HOST=0.0.0.0
+    # Boots the server in the background, waits, pulls the model, and keeps the container alive
+    entrypoint: >
+      sh -c "ollama serve & sleep 5 && ollama pull nomic-embed-text && wait"
     volumes:
-      - ./embedding-cache:/data
+      - ./embedding-cache:/root/.ollama
 
   # @spec KEYS-001, KEYS-002
   postgres:
@@ -55,7 +58,9 @@ services:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
       - REDIS_HOST=redis
-      - EMBEDDING_SIMILARITY_THRESHOLD=${EMBEDDING_SIMILARITY_THRESHOLD:-0.85}
+      # Empty, not omitted: LiteLLM's redis-semantic backend requires this env var to
+      # exist even when Redis has no auth configured (KeyError -> boot crash otherwise).
+      - REDIS_PASSWORD=
       - DATABASE_URL=postgresql://litellm:${POSTGRES_PASSWORD}@postgres:5432/litellm
     command: [ "--config", "/app/config.yaml", "--port", "4000" ]
     depends_on:
