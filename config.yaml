@@ -49,6 +49,9 @@ litellm_settings:
     host: os.environ/REDIS_HOST
     port: 6379
     ttl: 604800 # 7-day TTL to survive the work week
-    similarity_threshold: os.environ/EMBEDDING_SIMILARITY_THRESHOLD
+    # Literal float, not `os.environ/...` — LiteLLM's env-var substitution always
+    # returns a str, and redis_semantic_cache.py does `1 - similarity_threshold`
+    # unconditionally, crashing with TypeError on every boot.
+    similarity_threshold: 0.85
   forward_client_headers_to_llm_api: true
   drop_params: true
