@@ -44,7 +44,7 @@ services:
 
   # @spec GATE-010, KEYS-003, KEYS-004
   litellm:
-    image: ghcr.io/berriai/litellm:main-v1.92.0
+    image: litellm/litellm:main-latest
     container_name: litellm-proxy
     restart: always
     ports:

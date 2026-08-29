@@ -31,6 +31,8 @@ sync_one() {
   line=$(printf '%s\n' "$secrets_env" | grep -m1 "^${bws_key}=" || true)
   [ -z "$line" ] && return
   value=${line#*=}
+  value=${value#\"}
+  value=${value%\"}
   awk -v k="$toml_key" -v v="$value" '
     $0 ~ "^" k " = " { print k " = \"" v "\""; next }
     { print }
