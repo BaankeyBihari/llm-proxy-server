@@ -1,9 +1,5 @@
-[config]
-embedding_similarity_threshold = 0.85
-
 [secrets]
 openrouter_api_key = "your_openrouter_key_here"
 litellm_master_key = "sk-master-key-1234"
 postgres_password = "changeme"
 tailscale_auth_key = "tskey-auth-REPLACE_ME"
-

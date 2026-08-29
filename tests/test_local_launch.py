@@ -13,9 +13,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "scripts" / "launch.sh"
 
 EXAMPLE_TOML = (
-    "[config]\n"
-    "embedding_similarity_threshold = 0.85\n"
-    "\n"
     "[secrets]\n"
     'openrouter_api_key = "your_openrouter_key_here"\n'
     'litellm_master_key = "sk-master-key-1234"\n'
@@ -60,7 +57,7 @@ def test_copies_project_toml_example_when_missing(tmp_path, fake_bin, call_log):
     _fake_docker(add, call_log)
     (tmp_path / "project.toml.example").write_text(EXAMPLE_TOML)
 
-    result = _run(tmp_path, bin_dir, "\n\n\n\n")  # keep all four owned keys
+    result = _run(tmp_path, bin_dir, "\n\n\n")  # keep all three owned keys
 
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "project.toml").read_text() == EXAMPLE_TOML
@@ -74,7 +71,7 @@ def test_does_not_reset_existing_project_toml_to_example_values(tmp_path, fake_b
     real = EXAMPLE_TOML.replace("your_openrouter_key_here", "or-real-value")
     (tmp_path / "project.toml").write_text(real)
 
-    result = _run(tmp_path, bin_dir, "\n\n\n\n")  # keep current
+    result = _run(tmp_path, bin_dir, "\n\n\n")  # keep current
 
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "project.toml").read_text() == real
@@ -86,7 +83,7 @@ def test_only_prompts_owned_keys_not_tailscale(tmp_path, fake_bin, call_log):
     _fake_docker(add, call_log)
     (tmp_path / "project.toml.example").write_text(EXAMPLE_TOML)
 
-    result = _run(tmp_path, bin_dir, "\n\n\n\n")
+    result = _run(tmp_path, bin_dir, "\n\n\n")
 
     assert result.returncode == 0, result.stderr
     assert "tailscale_auth_key" not in result.stdout
@@ -98,7 +95,7 @@ def test_prompt_shows_current_value(tmp_path, fake_bin, call_log):
     _fake_docker(add, call_log)
     (tmp_path / "project.toml.example").write_text(EXAMPLE_TOML)
 
-    result = _run(tmp_path, bin_dir, "\n\n\n\n")
+    result = _run(tmp_path, bin_dir, "\n\n\n")
 
     assert result.returncode == 0, result.stderr
     assert "openrouter_api_key" in result.stdout
@@ -111,9 +108,8 @@ def test_replaces_value_when_new_value_given_keeps_others(tmp_path, fake_bin, ca
     _fake_docker(add, call_log)
     (tmp_path / "project.toml.example").write_text(EXAMPLE_TOML)
 
-    # order prompted: embedding_similarity_threshold, openrouter_api_key,
-    # litellm_master_key, postgres_password
-    result = _run(tmp_path, bin_dir, "\nor-new\n\n\n")
+    # order prompted: openrouter_api_key, litellm_master_key, postgres_password
+    result = _run(tmp_path, bin_dir, "or-new\n\n\n")
 
     assert result.returncode == 0, result.stderr
     text = (tmp_path / "project.toml").read_text()
@@ -128,12 +124,11 @@ def test_preserves_table_headers_and_comments(tmp_path, fake_bin, call_log):
     example = "# top comment\n" + EXAMPLE_TOML
     (tmp_path / "project.toml.example").write_text(example)
 
-    result = _run(tmp_path, bin_dir, "\n\n\n\n")
+    result = _run(tmp_path, bin_dir, "\n\n\n")
 
     assert result.returncode == 0, result.stderr
     text = (tmp_path / "project.toml").read_text()
     assert "# top comment" in text
-    assert "[config]" in text
     assert "[secrets]" in text
 
 
@@ -156,7 +151,7 @@ def test_renders_env_from_project_toml_before_bringing_stack_up(tmp_path, fake_b
     _fake_docker(add, call_log)
     (tmp_path / "project.toml.example").write_text(EXAMPLE_TOML)
 
-    result = _run(tmp_path, bin_dir, "\n\n\n\n")
+    result = _run(tmp_path, bin_dir, "\n\n\n")
 
     assert result.returncode == 0, result.stderr
     env_text = (tmp_path / ".env").read_text()
@@ -170,7 +165,7 @@ def test_brings_up_stack_after_populating_project_toml(tmp_path, fake_bin, call_
     _fake_docker(add, call_log)
     (tmp_path / "project.toml.example").write_text(EXAMPLE_TOML)
 
-    result = _run(tmp_path, bin_dir, "\n\n\n\n")
+    result = _run(tmp_path, bin_dir, "\n\n\n")
 
     assert result.returncode == 0, result.stderr
     calls = call_log.read_text().splitlines()
@@ -187,7 +182,7 @@ def test_prints_curl_example_with_real_master_key(tmp_path, fake_bin, call_log):
     (tmp_path / "project.toml.example").write_text(EXAMPLE_TOML)
     (tmp_path / "project.toml").write_text(real)
 
-    result = _run(tmp_path, bin_dir, "\n\n\n\n")  # keep all
+    result = _run(tmp_path, bin_dir, "\n\n\n")  # keep all
 
     assert result.returncode == 0, result.stderr
     assert "curl" in result.stdout

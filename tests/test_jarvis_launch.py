@@ -14,9 +14,6 @@ SCRIPT = REPO_ROOT / "scripts" / "launch.sh"
 TEMPLATE = REPO_ROOT / "scripts" / "jarvis-startup.sh.example"
 
 EXAMPLE_TOML = (
-    "[config]\n"
-    "embedding_similarity_threshold = 0.85\n"
-    "\n"
     "[secrets]\n"
     'openrouter_api_key = "your_openrouter_key_here"\n'
     'litellm_master_key = "sk-master-key-1234"\n'

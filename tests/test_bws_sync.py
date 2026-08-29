@@ -10,9 +10,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "scripts" / "bws-sync.sh"
 
 EXAMPLE_TOML = (
-    "[config]\n"
-    "embedding_similarity_threshold = 0.85\n"
-    "\n"
     "[secrets]\n"
     'openrouter_api_key = "your_openrouter_key_here"\n'
     'litellm_master_key = "sk-master-key-1234"\n'

@@ -18,9 +18,6 @@ _STDLIB_ALLOWLIST = {"tomllib", "json", "sys", "os", "pathlib", "subprocess", "a
 
 def _write_project_toml(path):
     path.write_text(
-        "[config]\n"
-        "embedding_similarity_threshold = 0.85\n"
-        "\n"
         "[secrets]\n"
         'openrouter_api_key = "or-real"\n'
         'litellm_master_key = "sk-real"\n'
@@ -44,9 +41,9 @@ def _run_render(tmp_path, extra_path=None):
 
 
 # @spec CONF-001
-def test_example_has_config_and_secrets_tables_with_expected_defaults():
+def test_example_has_secrets_table_with_expected_keys():
     data = tomllib.loads(EXAMPLE.read_text())
-    assert data["config"]["embedding_similarity_threshold"] == 0.85
+    assert "config" not in data
     for key in (
         "openrouter_api_key",
         "litellm_master_key",
@@ -79,7 +76,6 @@ def test_render_writes_env_with_expected_keys(tmp_path):
     assert "OPENROUTER_API_KEY=or-real" in env_text
     assert "LITELLM_MASTER_KEY=sk-real" in env_text
     assert "POSTGRES_PASSWORD=pg-real" in env_text
-    assert "EMBEDDING_SIMILARITY_THRESHOLD=0.85" in env_text
 
 
 # @spec CONF-004
@@ -180,7 +176,7 @@ def test_prompt_loop_keeps_current_value_on_empty_response(tmp_path):
 def test_prompt_loop_preserves_table_headers_and_comments(tmp_path):
     toml_path = tmp_path / "project.toml"
     toml_path.write_text(
-        "# a comment\n[config]\nembedding_similarity_threshold = 0.85\n\n[secrets]\n"
+        '# a comment\n[other]\nfoo = "bar"\n\n[secrets]\n'
         'openrouter_api_key = "or-real"\n'
     )
 
@@ -189,5 +185,5 @@ def test_prompt_loop_preserves_table_headers_and_comments(tmp_path):
     assert result.returncode == 0, result.stderr
     text = toml_path.read_text()
     assert "# a comment" in text
-    assert "[config]" in text
+    assert "[other]" in text
     assert "[secrets]" in text

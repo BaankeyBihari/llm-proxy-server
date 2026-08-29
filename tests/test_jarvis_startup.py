@@ -162,9 +162,6 @@ def test_does_not_overwrite_existing_project_toml(tmp_path, fake_bin, call_log):
     _seed_repo_files(workspace)
     (workspace / ".git").mkdir()
     real_toml = (
-        "[config]\n"
-        "embedding_similarity_threshold = 0.85\n"
-        "\n"
         "[secrets]\n"
         'openrouter_api_key = "real-key"\n'
         'litellm_master_key = "sk-real"\n'
