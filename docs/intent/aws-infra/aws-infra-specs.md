@@ -2,7 +2,7 @@
 
 ## EC2 + Networking
 
-- [x] **INFRA-001**: The Terraform config shall declare exactly one `aws_instance` resource with `instance_type` set to `t4g.small`.
+- [x] **INFRA-001**: The Terraform config shall declare exactly one `aws_instance` resource with `instance_type` set to `t4g.medium`.
 - [x] **INFRA-002**: The EC2 security group shall declare zero ingress rules.
 - [x] **INFRA-003**: The EC2 security group shall allow all egress traffic.
 - [x] **INFRA-004**: The `aws_instance` resource's `lifecycle` block shall ignore changes to `instance_type`.

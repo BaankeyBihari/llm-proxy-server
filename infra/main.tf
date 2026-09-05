@@ -39,7 +39,7 @@ provider "aws" {
 }
 
 # ------------------------------------------------------------------------------
-# EC2 instance (t4g.small, ARM64)
+# EC2 instance (t4g.medium, ARM64)
 # ------------------------------------------------------------------------------
 
 data "aws_ami" "ubuntu_arm" {
@@ -94,7 +94,7 @@ resource "aws_iam_instance_profile" "ec2_profile" {
 
 resource "aws_instance" "litellm_server" {
   ami                    = data.aws_ami.ubuntu_arm.id
-  instance_type          = "t4g.small"
+  instance_type          = "t4g.medium"
   vpc_security_group_ids = [aws_security_group.litellm_sg.id]
   iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
 

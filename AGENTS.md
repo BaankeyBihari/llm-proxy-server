@@ -40,7 +40,7 @@ These come from the failure-analysis doc and are easy to violate by accident whe
 - **Tailscale state must live under the persistent volume** (`--statedir=/home/.../tailscale-state`), never the default `/var/lib/tailscale` — pod pauses wipe `/var/lib/`, which re-registers the machine as a new node each time.
 - **Startup scripts must poll for the Docker daemon** (`until docker info > /dev/null 2>&1`) before `docker compose up` — cloud init runs before Docker is ready.
 - **Redis needs a mounted volume + snapshotting** (`./redis-data:/data`, `--save 60 1`) or the semantic cache is wiped on every pause/resume cycle.
-- **EC2 instance type is locked to `t3.*`/`t4g.*` (x86_64/ARM64 respectively) and cannot cross families on the same volume.** The Lambda ignition switch whitelists exactly `t4g.small`, `t4g.medium`, `t3.small`, `t3.medium` — any type-switching code must preserve that whitelist.
+- **EC2 instance type is locked to `t3.*`/`t4g.*` (x86_64/ARM64 respectively) and cannot cross families on the same volume.** The Lambda ignition switch whitelists exactly `t4g.medium`, `t3.medium` — `small` sizes were dropped (2 GiB OOMs the stack; measured idle footprint is ~1.35 GiB) — any type-switching code must preserve that whitelist.
 - **Exactly one Elastic IP, no load balancer, no NAT gateway, no secondary IPs** on EC2 — this is a deliberate cost constraint ($3.65/mo cap), not an oversight.
 - **Redis TTL (`ttl: 604800`, 7 days) bounds cache growth** — don't remove it without an alternative eviction strategy; `maxmemory 1536mb` + `allkeys-lru` is the memory-side backstop.
 
