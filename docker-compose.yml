@@ -47,7 +47,7 @@ services:
 
   # @spec GATE-010, KEYS-003, KEYS-004
   litellm:
-    image: litellm/litellm:main-latest
+    image: litellm/litellm:v1.99.1
     container_name: litellm-proxy
     restart: always
     ports:
