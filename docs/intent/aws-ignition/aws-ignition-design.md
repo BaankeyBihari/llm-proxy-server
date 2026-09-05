@@ -13,7 +13,9 @@ This leaf owns only that request-handling logic (`ignition/handler.py`). The Lam
 
 ## Request Handling
 
-The function reads `size` from the request's query string, defaulting to `t4g.small` when absent. The allowed set is a strict whitelist — `t4g.small`, `t4g.medium`, `t3.small`, `t3.medium` — validated **before** any AWS call. An invalid size returns HTTP 400 immediately; the function never attempts to start the instance with an unvalidated size.
+The function reads `size` from the request's query string, defaulting to `t4g.medium` when absent. The allowed set is a strict whitelist — `t4g.medium`, `t3.medium` — validated **before** any AWS call. An invalid size returns HTTP 400 immediately; the function never attempts to start the instance with an unvalidated size.
+
+`t4g.small`/`t3.small` (2 GiB) were dropped from the whitelist: measured idle memory of the running stack (litellm, headroom, embedding sidecar, postgres, redis) is ~1.35 GiB before OS/Docker overhead and before litellm's cold-boot spike, which OOM-killed a 2 GiB instance in testing. `medium` (4 GiB) is the floor with real margin. See `high-level-design.md`'s Key Design Decisions table (Postgres virtual-key management row) for the original deferred trade-off this resolves.
 
 ## Resize-then-Start
 
@@ -30,6 +32,7 @@ A valid request returns HTTP 200 with a body naming the outcome (resized-and-boo
 | Size whitelist enforcement point | Server-side, in the Lambda, before any AWS call | Trust the caller / let AWS reject invalid types | AWS's own rejection for cross-architecture resize is a generic API error, not a clear "here are your valid choices" message; validating first turns a silent/cryptic failure into an explicit 400. |
 | Resize failure handling | Swallow and proceed to start | Abort on resize failure | A resize failure (already running, or same-family no-op) is not a request failure — the user's actual goal ("get the server up") is still achievable. |
 | Instance identification | `INSTANCE_ID` environment variable | Hardcoded in function body | Keeps the deployed instance ID out of source control; the function code itself is instance-agnostic. |
+| Whitelist floor | `t4g.medium`/`t3.medium` only, dropping `t4g.small`/`t3.small` | Keep all four sizes, document the OOM risk instead | Measured idle stack memory (~1.35 GiB) leaves no real margin on a 2 GiB instance before OS overhead and litellm's cold-boot spike; the small sizes OOM-crashed in testing. A 4 GiB floor is the smallest size that actually runs the stack. |
 
 ## Open Questions & Future Decisions
 

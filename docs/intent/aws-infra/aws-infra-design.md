@@ -18,7 +18,7 @@ A single `infra/main.tf`, matching the source guide's one-file approach. `infra/
 ## EC2 + Networking
 
 - `data "aws_ami"` looks up the latest Ubuntu 24.04 ARM64 AMI at apply time rather than hand-pinning an AMI ID that would rot.
-- `aws_instance`, type `t4g.small` (the default family/size from `aws-deploy`'s Host-Level Constraint), 20GB gp3 root volume.
+- `aws_instance`, type `t4g.medium` (the family from `aws-deploy`'s Host-Level Constraint; the size floor from `aws-ignition`'s whitelist — see `aws-ignition-design.md`), 20GB gp3 root volume.
 - `lifecycle { ignore_changes = [instance_type] }` — the ignition Lambda (`aws-ignition`) resizes the instance at runtime via `modify_instance_attribute`; without this, the next `terraform apply` would silently revert that resize back to the config's default.
 - Security group: zero ingress rules, allow-all egress. Matches the HLD's "Tailscale is the sole trust boundary" tenet — no inbound path exists at the AWS network layer at all.
 - `user_data` does one-time OS bootstrap: swap file, Docker, Tailscale install *and* authentication. `metadata_options { http_tokens = "required" }` forces IMDSv2 — needed because `user_data` now carries a secret (below), and IMDSv2 closes the plain-unauthenticated-GET path to reading it off the instance metadata service.

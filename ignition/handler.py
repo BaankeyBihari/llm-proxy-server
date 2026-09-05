@@ -9,8 +9,8 @@ import os
 import boto3
 
 # @spec IGNITE-001
-ALLOWED_SIZES = ["t4g.small", "t4g.medium", "t3.small", "t3.medium"]
-DEFAULT_SIZE = "t4g.small"
+ALLOWED_SIZES = ["t4g.medium", "t3.medium"]
+DEFAULT_SIZE = "t4g.medium"
 
 
 # @spec IGNITE-001, IGNITE-002, IGNITE-003, IGNITE-004, IGNITE-005, IGNITE-006, IGNITE-007

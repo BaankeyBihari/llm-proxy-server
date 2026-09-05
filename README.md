@@ -94,7 +94,7 @@ The `@reboot` line is what runs `scripts/aws-start-stack.sh` (docker-wait, `git 
 curl "https://<lambda-function-url>/"                    # boot at current/default size
 curl "https://<lambda-function-url>/?size=t4g.medium"     # resize then boot
 ```
-Allowed sizes: `t4g.small`, `t4g.medium`, `t3.small`, `t3.medium` — anything else returns HTTP 400 without touching the instance.
+Allowed sizes: `t4g.medium`, `t3.medium` — anything else returns HTTP 400 without touching the instance.
 
 ## Layout
 

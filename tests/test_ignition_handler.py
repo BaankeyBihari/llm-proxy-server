@@ -17,7 +17,9 @@ def instance_id_env(monkeypatch):
 
 
 # @spec IGNITE-001, IGNITE-002
-@pytest.mark.parametrize("bad_size", ["t3.large", "t4g.nano", "not-a-size"])
+@pytest.mark.parametrize(
+    "bad_size", ["t3.large", "t4g.nano", "not-a-size", "t4g.small", "t3.small"]
+)
 def test_rejects_size_outside_whitelist(bad_size):
     with patch("ignition.handler.boto3.client") as mock_client:
         response = lambda_handler(_event(bad_size), None)
@@ -27,9 +29,7 @@ def test_rejects_size_outside_whitelist(bad_size):
 
 
 # @spec IGNITE-001
-@pytest.mark.parametrize(
-    "good_size", ["t4g.small", "t4g.medium", "t3.small", "t3.medium"]
-)
+@pytest.mark.parametrize("good_size", ["t4g.medium", "t3.medium"])
 def test_accepts_whitelisted_sizes(good_size):
     with patch("ignition.handler.boto3.client") as mock_client:
         response = lambda_handler(_event(good_size), None)
@@ -41,13 +41,13 @@ def test_accepts_whitelisted_sizes(good_size):
 
 
 # @spec IGNITE-003
-def test_defaults_to_t4g_small_when_size_omitted():
+def test_defaults_to_t4g_medium_when_size_omitted():
     with patch("ignition.handler.boto3.client") as mock_client:
         response = lambda_handler(_event(), None)
 
     assert response["statusCode"] == 200
     mock_client.return_value.modify_instance_attribute.assert_called_once_with(
-        InstanceId="i-0test1234", InstanceType={"Value": "t4g.small"}
+        InstanceId="i-0test1234", InstanceType={"Value": "t4g.medium"}
     )
 
 
@@ -86,7 +86,7 @@ def test_always_starts_instance_for_valid_request():
 # @spec IGNITE-007
 def test_response_body_describes_outcome():
     with patch("ignition.handler.boto3.client"):
-        response = lambda_handler(_event("t3.small"), None)
+        response = lambda_handler(_event("t3.medium"), None)
 
     assert response["statusCode"] == 200
-    assert "t3.small" in response["body"]
+    assert "t3.medium" in response["body"]

@@ -42,8 +42,8 @@ def _instance_block(text):
 
 
 # @spec INFRA-001
-def test_ec2_instance_is_t4g_small(tf_text):
-    assert re.search(r'instance_type\s*=\s*"t4g\.small"', _instance_block(tf_text))
+def test_ec2_instance_is_t4g_medium(tf_text):
+    assert re.search(r'instance_type\s*=\s*"t4g\.medium"', _instance_block(tf_text))
 
 
 # @spec INFRA-002
