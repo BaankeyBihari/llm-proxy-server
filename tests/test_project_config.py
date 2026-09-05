@@ -5,7 +5,6 @@ import os
 import subprocess
 from pathlib import Path
 
-import pytest
 import tomllib
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
