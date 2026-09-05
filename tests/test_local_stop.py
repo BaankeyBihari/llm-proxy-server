@@ -4,24 +4,10 @@ import os
 import subprocess
 from pathlib import Path
 
+from conftest import _fake_docker
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "scripts" / "local-stop.sh"
-
-
-def _fake_docker(add, call_log, running=False):
-    ps_output = 'echo "fake-container-id"' if running else ":"
-    add(
-        "docker",
-        f'echo "docker $*" >> {call_log}\n'
-        f'if [ "$1" = "compose" ] && [ "$2" = "ps" ]; then\n'
-        f"  {ps_output}\n"
-        f"  exit 0\n"
-        f"fi\n"
-        f'if [ "$1" = "compose" ] && [ "$2" = "down" ]; then\n'
-        f"  exit 0\n"
-        f"fi\n"
-        f"exit 0\n",
-    )
 
 
 def _run(tmp_path, bin_dir):

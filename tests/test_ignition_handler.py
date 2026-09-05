@@ -1,6 +1,5 @@
 """Unit tests for the AWS ignition Lambda, boto3 mocked via unittest.mock
 (stdlib — no moto/localstack dependency; see HLD Key Design Decisions)."""
-import os
 from unittest.mock import MagicMock, patch
 
 import pytest

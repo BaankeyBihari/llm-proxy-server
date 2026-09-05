@@ -28,3 +28,24 @@ def fake_bin(tmp_path):
 def call_log(tmp_path):
     """Path fake commands can append their invocation to, for assertions."""
     return tmp_path / "calls.log"
+
+
+def _fake_docker(add, call_log, running=False):
+    """Installs a fake `docker` fielding compose ps/up/down, shared by the
+    local-launch and local-stop script tests."""
+    ps_output = 'echo "fake-container-id"' if running else ":"
+    add(
+        "docker",
+        f'echo "docker $*" >> {call_log}\n'
+        f'if [ "$1" = "compose" ] && [ "$2" = "ps" ]; then\n'
+        f"  {ps_output}\n"
+        f"  exit 0\n"
+        f"fi\n"
+        f'if [ "$1" = "compose" ] && [ "$2" = "up" ]; then\n'
+        f"  exit 0\n"
+        f"fi\n"
+        f'if [ "$1" = "compose" ] && [ "$2" = "down" ]; then\n'
+        f"  exit 0\n"
+        f"fi\n"
+        f"exit 0\n",
+    )
