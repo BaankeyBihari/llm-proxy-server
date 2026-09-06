@@ -25,7 +25,7 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
   - model_name: resilient-router
     litellm_params:
-      model: openrouter/nvidia/llama-3.1-nemotron-70b-instruct
+      model: openrouter/nvidia/nemotron-3-super-120b-a12b
       api_key: os.environ/OPENROUTER_API_KEY
 
   # 5. Wildcard passthrough (any OpenRouter model)
