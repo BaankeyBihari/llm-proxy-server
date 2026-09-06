@@ -53,7 +53,7 @@ def test_resilient_router_is_a_two_model_fallback_chain_in_order(config):
     entries = _model_entries(config, "resilient-router")
     assert [e["litellm_params"]["model"] for e in entries] == [
         "openrouter/nousresearch/hermes-3-llama-3.1-405b",
-        "openrouter/nvidia/llama-3.1-nemotron-70b-instruct",
+        "openrouter/nvidia/nemotron-3-super-120b-a12b",
     ]
 
 
