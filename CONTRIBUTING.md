@@ -25,5 +25,14 @@ push.
 
 ## Pull requests
 
-`main` is protected — direct pushes are rejected. Branch off `main`, commit,
-push, open a PR. The `Test (pytest)` check must pass before merge.
+`main` is protected — direct pushes and force-pushes are rejected. Branch off
+`main`, commit, push, open a PR. All checks must pass before merge:
+`Test (pytest)`, `Analyze (python)`, `CodeQL`.
+
+Merge via squash or rebase — merge commits aren't allowed (linear history
+required). The branch is deleted automatically after merge.
+
+## Reporting a security issue
+
+See [SECURITY.md](SECURITY.md) — use private vulnerability reporting, not a
+public issue.
